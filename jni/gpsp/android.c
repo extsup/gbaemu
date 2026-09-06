@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <SLES/OpenSLES.h>
+#include <SLES/OpenSLES_Android.h>
 
 #define TAG "GBAemu"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
@@ -57,6 +59,68 @@ static uint32_t *framebuffer = NULL;
 static unsigned fb_width = 240, fb_height = 160;
 static uint32_t input_state = 0;
 
+// OpenSL ES Audio Engine variables
+static SLObjectItf engineObject = NULL;
+static SLEngineItf engineEngine = NULL;
+static SLObjectItf outputMixObject = NULL;
+static SLObjectItf bqPlayerObject = NULL;
+static SLPlayItf bqPlayerPlay = NULL;
+static SLAndroidSimpleBufferQueueItf bqPlayerBufferQueue = NULL;
+
+#define AUDIO_RING_SIZE (16384)
+static int16_t audio_ring[AUDIO_RING_SIZE];
+static volatile int ring_head = 0;
+static volatile int ring_tail = 0;
+
+static void bqPlayerCallback(SLAndroidSimpleBufferQueueItf bq, void *context) {
+    int16_t block[1024];
+    int samples_to_read = 512; // 256 stereo frames
+    int count = 0;
+    
+    while (count < samples_to_read && ring_head != ring_tail) {
+        block[count++] = audio_ring[ring_tail];
+        ring_tail = (ring_tail + 1) % AUDIO_RING_SIZE;
+    }
+    
+    if (count > 0) {
+        (*bqPlayerBufferQueue)->Enqueue(bqPlayerBufferQueue, block, count * sizeof(int16_t));
+    }
+}
+
+static void init_opensles() {
+    slCreateEngine(&engineObject, 0, NULL, 0, NULL, NULL);
+    (*engineObject)->Realize(engineObject, SL_BOOLEAN_FALSE);
+    (*engineObject)->GetInterface(engineObject, SL_IID_ENGINE, &engineEngine);
+
+    (*engineEngine)->CreateOutputMix(engineEngine, &outputMixObject, 0, NULL, NULL);
+    (*outputMixObject)->Realize(outputMixObject, SL_BOOLEAN_FALSE);
+
+    SLDataLocator_AndroidSimpleBufferQueue loc_bufq = {SL_DATALOCATOR_ANDROIDSIMPLEBUFFERQUEUE, 2};
+    SLDataFormat_PCM format_pcm = {
+        SL_DATAFORMAT_PCM, 2, SL_SAMPLINGRATE_32,
+        SL_PCMSAMPLEFORMAT_FIXED_16, SL_PCMSAMPLEFORMAT_FIXED_16,
+        SL_SPEAKER_FRONT_LEFT | SL_SPEAKER_FRONT_RIGHT, SL_BYTEORDER_LITTLEENDIAN
+    };
+    SLDataSource audioSrc = {&loc_bufq, &format_pcm};
+
+    SLDataLocator_OutputMix loc_outmix = {SL_DATALOCATOR_OUTPUTMIX, outputMixObject};
+    SLDataSink audioSnk = {&loc_outmix, NULL};
+
+    const SLInterfaceID ids[1] = {SL_IID_BUFFERQUEUE};
+    const SLboolean req[1] = {SL_BOOLEAN_TRUE};
+
+    (*engineEngine)->CreateAudioPlayer(engineEngine, &bqPlayerObject, &audioSrc, &audioSnk, 1, ids, req);
+    (*bqPlayerObject)->Realize(bqPlayerObject, SL_BOOLEAN_FALSE);
+    (*bqPlayerObject)->GetInterface(bqPlayerObject, SL_IID_PLAY, &bqPlayerPlay);
+    (*bqPlayerObject)->GetInterface(bqPlayerObject, SL_IID_BUFFERQUEUE, &bqPlayerBufferQueue);
+
+    (*bqPlayerBufferQueue)->RegisterCallback(bqPlayerBufferQueue, bqPlayerCallback, NULL);
+    (*bqPlayerPlay)->SetPlayState(bqPlayerPlay, SL_PLAYSTATE_PLAYING);
+
+    int16_t silence[512] = {0};
+    (*bqPlayerBufferQueue)->Enqueue(bqPlayerBufferQueue, silence, sizeof(silence));
+}
+
 static void video_refresh_cb(const void *data, unsigned width, unsigned height, size_t pitch) {
     if (!data || !framebuffer) return;
     fb_width = width; fb_height = height;
@@ -72,8 +136,30 @@ static void video_refresh_cb(const void *data, unsigned width, unsigned height, 
     }
 }
 
-static void audio_sample_cb(int16_t l, int16_t r) {}
-static size_t audio_sample_batch_cb(const int16_t *data, size_t frames) { return frames; }
+static void audio_sample_cb(int16_t l, int16_t r) {
+    int next_head = (ring_head + 1) % AUDIO_RING_SIZE;
+    if (next_head != ring_tail) {
+        audio_ring[ring_head] = l;
+        ring_head = next_head;
+    }
+    next_head = (ring_head + 1) % AUDIO_RING_SIZE;
+    if (next_head != ring_tail) {
+        audio_ring[ring_head] = r;
+        ring_head = next_head;
+    }
+}
+
+static size_t audio_sample_batch_cb(const int16_t *data, size_t frames) {
+    for (size_t i = 0; i < frames * 2; i++) {
+        int next_head = (ring_head + 1) % AUDIO_RING_SIZE;
+        if (next_head != ring_tail) {
+            audio_ring[ring_head] = data[i];
+            ring_head = next_head;
+        }
+    }
+    return frames;
+}
+
 static void input_poll_cb(void) {}
 static int16_t input_state_cb(unsigned port, unsigned device, unsigned index, unsigned id) {
     if (port != 0 || device != RETRO_DEVICE_JOYPAD) return 0;
@@ -121,8 +207,10 @@ Java_com_emu_gba_GBAEngine_nativeInit(JNIEnv *env, jobject obj, jstring soPath) 
     p_retro_set_input_state(input_state_cb);
     p_retro_init();
 
+    init_opensles();
+
     framebuffer = (uint32_t*)malloc(240 * 160 * 4);
-    LOGI("Core initialized.");
+    LOGI("Core and Audio initialized.");
     return JNI_TRUE;
 }
 
@@ -158,6 +246,18 @@ Java_com_emu_gba_GBAEngine_nativeGetFramebuffer(JNIEnv *env, jobject obj) {
 
 JNIEXPORT void JNICALL
 Java_com_emu_gba_GBAEngine_nativeCleanup(JNIEnv *env, jobject obj) {
+    if (bqPlayerObject) {
+        (*bqPlayerObject)->Destroy(bqPlayerObject);
+        bqPlayerObject = NULL;
+    }
+    if (outputMixObject) {
+        (*outputMixObject)->Destroy(outputMixObject);
+        outputMixObject = NULL;
+    }
+    if (engineObject) {
+        (*engineObject)->Destroy(engineObject);
+        engineObject = NULL;
+    }
     if (p_retro_unload_game) p_retro_unload_game();
     if (p_retro_deinit) p_retro_deinit();
     if (framebuffer) { free(framebuffer); framebuffer = NULL; }

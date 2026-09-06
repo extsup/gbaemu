@@ -24,37 +24,25 @@ object GBAEngine {
     init {
         System.loadLibrary("gbaemu")
         try {
-            System.loadLibrary("gpsp_libretro_android")
-            Log.d(TAG, "gpsp_libretro_android loaded via System.loadLibrary")
+            System.loadLibrary("gpsp_libretro")
+            Log.d(TAG, "gpsp_libretro loaded via System.loadLibrary")
         } catch (e: UnsatisfiedLinkError) {
-            Log.d(TAG, "gpsp_libretro_android not found as system lib, will use dlopen")
+            Log.d(TAG, "gpsp_libretro not found as system lib, will use dlopen")
         }
     }
 
     fun initCore(context: Context): Boolean {
-        val possiblePaths = listOf(
-            context.applicationInfo.nativeLibraryDir + "/gpsp_libretro_android.so",
-            "/data/data/${context.packageName}/lib/gpsp_libretro_android.so",
-            "/data/app/${context.packageName}*/lib/arm64-v8a/gpsp_libretro_android.so"
-        )
-        for (p in possiblePaths) {
-            Log.d(TAG, "Trying core: $p")
-            if (nativeInit(p)) {
-                corePath = p
-                Log.d(TAG, "Core loaded: $p")
-                return true
-            } else {
-                Log.e(TAG, "Failed to load from: $p")
-            }
+        // Mengambil direktori native library secara dinamis dari sistem Android
+        val nativeDir = context.applicationInfo.nativeLibraryDir
+        val coreFile = java.io.File(nativeDir, "libgpsp_libretro.so")
+
+        if (coreFile.exists()) {
+            Log.d(TAG, "Found core dynamically at: ${coreFile.absolutePath}")
+            return nativeInit(coreFile.absolutePath)
+        } else {
+            Log.e(TAG, "Core file does not exist in nativeLibraryDir: ${coreFile.absolutePath}")
+            return false
         }
-        try {
-            System.loadLibrary("gpsp_libretro_android")
-            Log.d(TAG, "Fallback: gpsp_libretro_android loaded via System.loadLibrary")
-            return true
-        } catch (e: UnsatisfiedLinkError) {
-            Log.e(TAG, "Fallback failed", e)
-        }
-        return false
     }
 
     external fun nativeInit(soPath: String): Boolean
