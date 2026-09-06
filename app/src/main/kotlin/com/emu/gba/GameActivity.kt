@@ -18,6 +18,27 @@ class GameActivity : Activity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
 
         val romPath = intent.getStringExtra("rom_path") ?: run {
+    // --- PATCH: Salin ROM ke cache internal ---
+    val romFile = File(romPath)
+    if (!romFile.exists() || !romFile.canRead()) {
+        Toast.makeText(this, "ROM tidak dapat diakses!", Toast.LENGTH_SHORT).show()
+        finish()
+        return
+    }
+    val cacheRom = File(cacheDir, "temp_rom.gba")
+    try {
+        romFile.inputStream().use { input ->
+            cacheRom.outputStream().use { output ->
+                input.copyTo(output)
+            }
+        }
+    } catch (e: Exception) {
+        Toast.makeText(this, "Gagal menyalin ROM: ${e.message}", Toast.LENGTH_SHORT).show()
+        finish()
+        return
+    }
+    val pathToLoad = cacheRom.absolutePath
+    // --- AKHIR PATCH ---
             Toast.makeText(this, "ROM tidak ditemukan!", Toast.LENGTH_SHORT).show()
             finish()
             return
