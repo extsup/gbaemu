@@ -32,15 +32,21 @@ object GBAEngine {
     }
 
     fun initCore(context: Context): Boolean {
-        // Mengambil direktori native library secara dinamis dari sistem Android
         val nativeDir = context.applicationInfo.nativeLibraryDir
-        val coreFile = java.io.File(nativeDir, "libgpsp_libretro.so").let { if (it.exists()) it else java.io.File(context.filesDir, "libgpsp_libretro.so") }
+        val srcFile = java.io.File(nativeDir, "libgpsp_libretro.so")
+        val destFile = java.io.File(context.filesDir, "libgpsp_libretro.so")
 
-        if (coreFile.exists()) {
-            Log.d(TAG, "Found core dynamically at: ${coreFile.absolutePath}")
-            return nativeInit(coreFile.absolutePath)
+        if (srcFile.exists()) {
+            srcFile.copyTo(destFile, overwrite = true)
+            Log.d(TAG, "Core copied to: ${destFile.absolutePath}")
         } else {
-            Log.e(TAG, "Core file does not exist in nativeLibraryDir: ${coreFile.absolutePath}")
+            Log.e(TAG, "Core not found in nativeLibraryDir: ${srcFile.absolutePath}")
+        }
+
+        if (destFile.exists()) {
+            return nativeInit(destFile.absolutePath)
+        } else {
+            Log.e(TAG, "Core not found: ${destFile.absolutePath}")
             return false
         }
     }
