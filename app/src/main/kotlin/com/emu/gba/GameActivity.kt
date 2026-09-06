@@ -20,6 +20,14 @@ class GameActivity : Activity() {
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        window.decorView.systemUiVisibility = (
+            android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            or android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
+            or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+            or android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+            or android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            or android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        )
 
         val romInput = intent.getStringExtra("rom_path") ?: run {
             Toast.makeText(this, "ROM tidak ditemukan!", Toast.LENGTH_SHORT).show()

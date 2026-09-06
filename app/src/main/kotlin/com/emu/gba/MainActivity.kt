@@ -11,6 +11,13 @@ import android.os.Bundle
 import android.os.Environment
 import android.provider.DocumentsContract
 import android.provider.Settings
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.BaseAdapter
+import android.widget.ImageButton
+import android.widget.ListView
+import android.widget.TextView
 import android.widget.Toast
 import androidx.documentfile.provider.DocumentFile
 import java.io.File
@@ -29,12 +36,22 @@ class MainActivity : Activity() {
     private lateinit var prefs: SharedPreferences
     private var folderUri: Uri? = null
     private var romFiles: List<DocumentFile> = emptyList()
+    private lateinit var romList: ListView
+    private lateinit var emptyText: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
+
+        romList = findViewById(R.id.romList)
+        emptyText = findViewById(R.id.emptyText)
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
 
         File(DEFAULT_ROM_DIR).mkdirs()
+
+        findViewById<ImageButton>(R.id.btnPickFolder).setOnClickListener {
+            pickFolder()
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             if (!Environment.isExternalStorageManager()) {
@@ -52,17 +69,13 @@ class MainActivity : Activity() {
                 REQ_PERMISSION
             )
         } else {
-            showMainDialog()
+            loadRoms()
         }
     }
 
-    override fun onRequestPermissionsResult(
-        requestCode: Int, permissions: Array<String>, results: IntArray
-    ) {
-        if (requestCode == REQ_PERMISSION &&
-            results.isNotEmpty() &&
-            results[0] == PackageManager.PERMISSION_GRANTED) {
-            showMainDialog()
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, results: IntArray) {
+        if (requestCode == REQ_PERMISSION && results.isNotEmpty() && results[0] == PackageManager.PERMISSION_GRANTED) {
+            loadRoms()
         } else {
             Toast.makeText(this, "Izin storage ditolak!", Toast.LENGTH_LONG).show()
         }
@@ -72,12 +85,8 @@ class MainActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         when (requestCode) {
             REQ_MANAGE_STORAGE -> {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    if (Environment.isExternalStorageManager()) {
-                        showMainDialog()
-                    } else {
-                        Toast.makeText(this, "Izin manajemen storage diperlukan!", Toast.LENGTH_LONG).show()
-                    }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) {
+                    loadRoms()
                 }
             }
             REQ_PICK_FOLDER -> {
@@ -92,13 +101,11 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun showMainDialog() {
+    private fun loadRoms() {
         val savedUri = prefs.getString(KEY_FOLDER_URI, null)
         if (savedUri != null) {
             try {
-                val uri = Uri.parse(savedUri)
-                folderUri = uri
-                scanFolder(uri)
+                scanFolder(Uri.parse(savedUri))
                 return
             } catch (e: Exception) {
                 prefs.edit().remove(KEY_FOLDER_URI).apply()
@@ -113,14 +120,7 @@ class MainActivity : Activity() {
         if (defaultFiles.isNotEmpty()) {
             showRomList(defaultFiles.map { it.absolutePath to it.name })
         } else {
-            AlertDialog.Builder(this)
-                .setTitle("GBAemu")
-                .setMessage("Tidak ada ROM ditemukan di folder default.\n\nPilih folder yang berisi ROM (.gba atau .zip)?")
-                .setPositiveButton("Pilih Folder") { _, _ ->
-                    pickFolder()
-                }
-                .setNegativeButton("Keluar") { _, _ -> finish() }
-                .show()
+            showEmpty()
         }
     }
 
@@ -131,63 +131,65 @@ class MainActivity : Activity() {
     }
 
     private fun scanFolder(uri: Uri) {
-        val treeUri = DocumentsContract.buildDocumentUriUsingTree(uri,
-            DocumentsContract.getTreeDocumentId(uri))
+        val treeUri = DocumentsContract.buildDocumentUriUsingTree(uri, DocumentsContract.getTreeDocumentId(uri))
         val root = DocumentFile.fromTreeUri(this, treeUri)
         if (root == null || !root.exists()) {
             Toast.makeText(this, "Folder tidak valid", Toast.LENGTH_SHORT).show()
             pickFolder()
             return
         }
-
         romFiles = findRomFiles(root)
         if (romFiles.isEmpty()) {
-            AlertDialog.Builder(this)
-                .setTitle("Tidak ada ROM")
-                .setMessage("Folder tidak mengandung file .gba atau .zip.\nPilih folder lain?")
-                .setPositiveButton("Pilih Folder") { _, _ -> pickFolder() }
-                .setNegativeButton("Batal") { _, _ -> finish() }
-                .show()
+            showEmpty()
         } else {
-            val names = romFiles.map { it.name ?: "Unknown" }.toTypedArray()
-            AlertDialog.Builder(this)
-                .setTitle("Pilih ROM")
-                .setItems(names) { _, which ->
-                    val selected = romFiles[which]
-                    launchGame(selected.uri.toString())
-                }
-                .show()
+            showRomList(romFiles.map { it.uri.toString() to (it.name ?: "Unknown") })
         }
     }
 
     private fun findRomFiles(doc: DocumentFile): List<DocumentFile> {
         val result = mutableListOf<DocumentFile>()
         doc.listFiles().forEach { child ->
-            if (child.isDirectory) {
-                result.addAll(findRomFiles(child))
-            } else {
+            if (child.isDirectory) result.addAll(findRomFiles(child))
+            else {
                 val name = child.name?.lowercase() ?: ""
-                if (name.endsWith(".gba") || name.endsWith(".zip")) {
-                    result.add(child)
-                }
+                if (name.endsWith(".gba") || name.endsWith(".zip")) result.add(child)
             }
         }
         return result
     }
 
+    private fun showEmpty() {
+        romList.visibility = View.GONE
+        emptyText.visibility = View.VISIBLE
+    }
+
     private fun showRomList(files: List<Pair<String, String>>) {
-        val names = files.map { it.second }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle("Pilih ROM")
-            .setItems(names) { _, which ->
-                launchGame(files[which].first)
-            }
-            .show()
+        romList.visibility = View.VISIBLE
+        emptyText.visibility = View.GONE
+        romList.adapter = RomAdapter(files)
+        romList.setOnItemClickListener { _, _, position, _ ->
+            launchGame(files[position].first)
+        }
     }
 
     private fun launchGame(romPathOrUri: String) {
-        val intent = Intent(this, GameActivity::class.java)
-        intent.putExtra("rom_path", romPathOrUri)
-        startActivity(intent)
+        startActivity(Intent(this, GameActivity::class.java).apply {
+            putExtra("rom_path", romPathOrUri)
+        })
+    }
+
+    inner class RomAdapter(private val files: List<Pair<String, String>>) : BaseAdapter() {
+        override fun getCount() = files.size
+        override fun getItem(pos: Int) = files[pos]
+        override fun getItemId(pos: Int) = pos.toLong()
+
+        override fun getView(pos: Int, convertView: View?, parent: ViewGroup): View {
+            val view = convertView ?: LayoutInflater.from(this@MainActivity)
+                .inflate(R.layout.item_rom, parent, false)
+            val name = files[pos].second
+            view.findViewById<TextView>(R.id.romName).text = name.substringBeforeLast(".")
+            view.findViewById<TextView>(R.id.romExt).text = name.substringAfterLast(".").uppercase()
+            return view
+        }
     }
 }
