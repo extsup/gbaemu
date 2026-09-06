@@ -190,10 +190,8 @@ JNIEXPORT jboolean JNICALL
 Java_com_emu_gba_GBAEngine_nativeInit(JNIEnv *env, jobject obj, jstring soPath) {
     const char *path = (*env)->GetStringUTFChars(env, soPath, NULL);
     LOGI("Loading core: %s", path);
-    libhandle = dlopen(path, RTLD_NOLOAD | RTLD_LAZY);
-    if (!libhandle) { libhandle = dlopen(path, RTLD_LAZY | RTLD_GLOBAL); }
+    libhandle = RTLD_DEFAULT;
     (*env)->ReleaseStringUTFChars(env, soPath, path);
-    if (!libhandle) { LOGE("dlopen failed: %s", dlerror()); return JNI_FALSE; }
 
     LOAD(retro_init) LOAD(retro_deinit) LOAD(retro_load_game) LOAD(retro_run)
     LOAD(retro_unload_game) LOAD(retro_set_environment) LOAD(retro_set_video_refresh)
@@ -262,5 +260,5 @@ Java_com_emu_gba_GBAEngine_nativeCleanup(JNIEnv *env, jobject obj) {
     if (p_retro_unload_game) p_retro_unload_game();
     if (p_retro_deinit) p_retro_deinit();
     if (framebuffer) { free(framebuffer); framebuffer = NULL; }
-    if (libhandle) { dlclose(libhandle); libhandle = NULL; }
+    libhandle = NULL;
 }
