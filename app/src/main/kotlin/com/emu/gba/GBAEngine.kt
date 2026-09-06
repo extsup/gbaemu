@@ -1,0 +1,45 @@
+package com.emu.gba
+
+object GBAEngine {
+
+    const val CORE_PATH = "/storage/emulated/0/ApkBuilder/GBAemu/libs/armeabi-v7a/gpsp_libretro.so"
+
+    const val KEY_A      = (1 shl 0)
+    const val KEY_B      = (1 shl 1)
+    const val KEY_SELECT = (1 shl 2)
+    const val KEY_START  = (1 shl 3)
+    const val KEY_RIGHT  = (1 shl 4)
+    const val KEY_LEFT   = (1 shl 5)
+    const val KEY_UP     = (1 shl 6)
+    const val KEY_DOWN   = (1 shl 7)
+    const val KEY_R      = (1 shl 8)
+    const val KEY_L      = (1 shl 9)
+
+    private var currentKeys = 0
+
+    init {
+        System.loadLibrary("gbaemu")
+    }
+
+    external fun nativeInit(soPath: String): Boolean
+    external fun nativeLoadRom(romPath: String): Boolean
+    external fun nativeRunFrame()
+    external fun nativeSetInput(keys: Int)
+    external fun nativeGetFramebuffer(): IntArray?
+    external fun nativeCleanup()
+
+    fun pressKey(key: Int) {
+        currentKeys = currentKeys or key
+        nativeSetInput(currentKeys)
+    }
+
+    fun releaseKey(key: Int) {
+        currentKeys = currentKeys and key.inv()
+        nativeSetInput(currentKeys)
+    }
+
+    fun resetKeys() {
+        currentKeys = 0
+        nativeSetInput(0)
+    }
+}
