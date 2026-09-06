@@ -19,10 +19,16 @@ android {
         versionCode 1
         versionName "1.0"
 
+        // 1. BAGIAN INI DIPERBAIKI (Hanya sisakan armeabi-v7a)
         externalNativeBuild {
             ndkBuild {
-                abiFilters "armeabi-v7a", "arm64-v8a"
+                abiFilters "armeabi-v7a"
             }
+        }
+        
+        // 2. TAMBAHKAN BLOK INI untuk memastikan APK yang dibuild hanya 32-bit
+        ndk {
+            abiFilters "armeabi-v7a"
         }
     }
 

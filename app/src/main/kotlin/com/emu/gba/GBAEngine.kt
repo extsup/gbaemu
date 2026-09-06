@@ -24,6 +24,7 @@ object GBAEngine {
     init {
         System.loadLibrary("gbaemu")
         try {
+            // Ini sudah benar! System.loadLibrary otomatis menambah "lib" dan ".so"
             System.loadLibrary("gpsp_libretro")
             Log.d(TAG, "gpsp_libretro loaded via System.loadLibrary")
         } catch (e: UnsatisfiedLinkError) {
@@ -32,11 +33,11 @@ object GBAEngine {
     }
 
     fun initCore(context: Context): Boolean {
+        // PERBAIKAN: Menyesuaikan nama file dengan awalan "lib" dan menghapus path arm64
         val possiblePaths = listOf(
-            context.applicationInfo.nativeLibraryDir + "/gpsp_libretro.so",
-            "/data/data/${context.packageName}/lib/gpsp_libretro.so",
-            "/data/app/${context.packageName}*/lib/arm64/gpsp_libretro.so",
-            "/data/app/${context.packageName}*/lib/armeabi-v7a/gpsp_libretro.so"
+            context.applicationInfo.nativeLibraryDir + "/libgpsp_libretro.so",
+            "/data/data/${context.packageName}/lib/libgpsp_libretro.so",
+            "/data/app/${context.packageName}*/lib/armeabi-v7a/libgpsp_libretro.so"
         )
         for (p in possiblePaths) {
             Log.d(TAG, "Trying core: $p")
