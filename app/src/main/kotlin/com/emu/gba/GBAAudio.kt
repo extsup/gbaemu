@@ -2,41 +2,35 @@ package com.emu.gba
 
 import android.media.AudioAttributes
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioTrack
 
 class GBAAudio {
 
     private val sampleRate = 32768
-    private val channelCount = 2
-    private val bufferSize = AudioTrack.getMinBufferSize(
+    private val bufferSize = maxOf(
+        AudioTrack.getMinBufferSize(
+            sampleRate,
+            AudioFormat.CHANNEL_OUT_STEREO,
+            AudioFormat.ENCODING_PCM_16BIT
+        ) * 2, 4096
+    )
+
+    private val audioTrack = AudioTrack(
+        AudioManager.STREAM_MUSIC,
         sampleRate,
         AudioFormat.CHANNEL_OUT_STEREO,
-        AudioFormat.ENCODING_PCM_16BIT
-    ) * 2
-
-    private val audioTrack = AudioTrack.Builder()
-        .setAudioAttributes(
-            AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_GAME)
-                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                .build()
-        )
-        .setAudioFormat(
-            AudioFormat.Builder()
-                .setSampleRate(sampleRate)
-                .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
-                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                .build()
-        )
-        .setBufferSizeInBytes(bufferSize)
-        .setTransferMode(AudioTrack.MODE_STREAM)
-        .build()
+        AudioFormat.ENCODING_PCM_16BIT,
+        bufferSize,
+        AudioTrack.MODE_STREAM
+    )
 
     private val buf = ShortArray(bufferSize / 2)
     private var thread: Thread? = null
     @Volatile private var running = false
 
     fun start() {
+        if (running) return
         audioTrack.play()
         running = true
         thread = Thread {
@@ -55,8 +49,10 @@ class GBAAudio {
         running = false
         thread?.join()
         thread = null
-        audioTrack.pause()
-        audioTrack.flush()
+        if (audioTrack.playState == AudioTrack.PLAYSTATE_PLAYING) {
+            audioTrack.pause()
+            audioTrack.flush()
+        }
     }
 
     fun release() {
