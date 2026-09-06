@@ -23,12 +23,20 @@ object GBAEngine {
 
     init {
         System.loadLibrary("gbaemu")
+        try {
+            System.loadLibrary("gpsp_libretro")
+            Log.d(TAG, "gpsp_libretro loaded via System.loadLibrary")
+        } catch (e: UnsatisfiedLinkError) {
+            Log.d(TAG, "gpsp_libretro not found as system lib, will use dlopen")
+        }
     }
 
     fun initCore(context: Context): Boolean {
         val possiblePaths = listOf(
             context.applicationInfo.nativeLibraryDir + "/gpsp_libretro.so",
-            "/data/data/${context.packageName}/lib/gpsp_libretro.so"
+            "/data/data/${context.packageName}/lib/gpsp_libretro.so",
+            "/data/app/${context.packageName}*/lib/arm64/gpsp_libretro.so",
+            "/data/app/${context.packageName}*/lib/armeabi-v7a/gpsp_libretro.so"
         )
         for (p in possiblePaths) {
             Log.d(TAG, "Trying core: $p")
@@ -39,6 +47,13 @@ object GBAEngine {
             } else {
                 Log.e(TAG, "Failed to load from: $p")
             }
+        }
+        try {
+            System.loadLibrary("gpsp_libretro")
+            Log.d(TAG, "Fallback: gpsp_libretro loaded via System.loadLibrary")
+            return true
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Fallback failed", e)
         }
         return false
     }
