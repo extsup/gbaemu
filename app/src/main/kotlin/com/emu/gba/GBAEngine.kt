@@ -1,8 +1,10 @@
 package com.emu.gba
 
+import android.content.Context
+
 object GBAEngine {
 
-    const val CORE_PATH = "" // diisi dari GameActivity via context.applicationInfo.nativeLibsDir
+    private var corePath: String = ""
 
     const val KEY_A      = (1 shl 0)
     const val KEY_B      = (1 shl 1)
@@ -19,6 +21,11 @@ object GBAEngine {
 
     init {
         System.loadLibrary("gbaemu")
+    }
+
+    fun initCore(context: Context): Boolean {
+        corePath = context.applicationInfo.nativeLibraryDir + "/gpsp_libretro.so"
+        return nativeInit(corePath)
     }
 
     external fun nativeInit(soPath: String): Boolean
