@@ -5,6 +5,8 @@ android {
     compileSdkVersion 33
     ndkVersion "21.4.7075529"
 
+    namespace "com.emu.gba"
+
     defaultConfig {
         applicationId "com.emu.gba"
         minSdkVersion 21
