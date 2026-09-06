@@ -13,6 +13,7 @@ class GameActivity : Activity() {
 
     private lateinit var gbaView: GBAView
     private lateinit var controller: VirtualController
+    private lateinit var audio: GBAAudio
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,6 +49,8 @@ class GameActivity : Activity() {
 
         gbaView = GBAView(this)
         controller = VirtualController(this)
+        audio = GBAAudio()
+        audio.start()
 
         val frame = FrameLayout(this)
         frame.addView(gbaView)
@@ -106,16 +109,19 @@ class GameActivity : Activity() {
     override fun onPause() {
         super.onPause()
         if (::gbaView.isInitialized) gbaView.pause()
+        if (::audio.isInitialized) audio.stop()
     }
 
     override fun onResume() {
         super.onResume()
         if (::gbaView.isInitialized) gbaView.resume()
+        if (::audio.isInitialized) audio.start()
     }
 
     override fun onDestroy() {
         super.onDestroy()
         if (::gbaView.isInitialized) gbaView.pause()
+        if (::audio.isInitialized) audio.release()
         GBAEngine.nativeCleanup()
     }
 }

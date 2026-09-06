@@ -56,6 +56,7 @@ object GBAEngine {
     external fun nativeRunFrame()
     external fun nativeSetInput(keys: Int)
     external fun nativeGetFramebuffer(): IntArray?
+    external fun nativeReadAudio(buf: ShortArray, len: Int): Int
     external fun nativeCleanup()
 
     fun pressKey(key: Int) {
