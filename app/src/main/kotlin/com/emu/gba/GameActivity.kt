@@ -126,6 +126,10 @@ class GameActivity : Activity() {
         if (::audio.isInitialized) audio.start()
     }
 
+    override fun onBackPressed() {
+        moveTaskToBack(true)
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         if (::gbaView.isInitialized) gbaView.pause()

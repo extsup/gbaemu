@@ -64,6 +64,28 @@ static int16_t audio_ring[AUDIO_RING_SIZE];
 static volatile int ring_head = 0;
 static volatile int ring_tail = 0;
 
+#define SRC_RATE 65536
+#define DST_RATE 44100
+static uint32_t resample_frac = 0;
+static int16_t last_l = 0, last_r = 0;
+
+static void push_sample(int16_t l, int16_t r) {
+    int next = (ring_head + 1) % AUDIO_RING_SIZE;
+    if (next != ring_tail) { audio_ring[ring_head] = l; ring_head = next; }
+    next = (ring_head + 1) % AUDIO_RING_SIZE;
+    if (next != ring_tail) { audio_ring[ring_head] = r; ring_head = next; }
+}
+
+static void resample_push(int16_t l, int16_t r) {
+    resample_frac += DST_RATE;
+    while (resample_frac >= SRC_RATE) {
+        resample_frac -= SRC_RATE;
+        push_sample(l, r);
+    }
+    last_l = l;
+    last_r = r;
+}
+
 static void video_refresh_cb(const void *data, unsigned width, unsigned height, size_t pitch) {
     if (!data || !framebuffer) return;
     fb_width = width; fb_height = height;
@@ -80,25 +102,12 @@ static void video_refresh_cb(const void *data, unsigned width, unsigned height, 
 }
 
 static void audio_sample_cb(int16_t l, int16_t r) {
-    int next_head = (ring_head + 1) % AUDIO_RING_SIZE;
-    if (next_head != ring_tail) {
-        audio_ring[ring_head] = l;
-        ring_head = next_head;
-    }
-    next_head = (ring_head + 1) % AUDIO_RING_SIZE;
-    if (next_head != ring_tail) {
-        audio_ring[ring_head] = r;
-        ring_head = next_head;
-    }
+    resample_push(l, r);
 }
 
 static size_t audio_sample_batch_cb(const int16_t *data, size_t frames) {
-    for (size_t i = 0; i < frames * 2; i++) {
-        int next_head = (ring_head + 1) % AUDIO_RING_SIZE;
-        if (next_head != ring_tail) {
-            audio_ring[ring_head] = data[i];
-            ring_head = next_head;
-        }
+    for (size_t i = 0; i < frames; i++) {
+        resample_push(data[i*2], data[i*2+1]);
     }
     return frames;
 }

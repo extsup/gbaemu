@@ -22,30 +22,39 @@ class GBAView(context: Context) : SurfaceView(context), SurfaceHolder.Callback {
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
+        startRender(holder)
+    }
+
+    override fun surfaceDestroyed(holder: SurfaceHolder) {
+        stopRender()
+    }
+
+    override fun surfaceChanged(holder: SurfaceHolder, format: Int, w: Int, h: Int) {}
+
+    fun pause() {
+        stopRender()
+    }
+
+    fun resume() {
+        if (holder.surface.isValid) {
+            startRender(holder)
+        }
+    }
+
+    private fun startRender(holder: SurfaceHolder) {
+        stopRender()
         renderThread = RenderThread(holder).also {
             it.running = true
             it.start()
         }
     }
 
-    override fun surfaceDestroyed(holder: SurfaceHolder) = pause()
-    override fun surfaceChanged(holder: SurfaceHolder, format: Int, w: Int, h: Int) {}
-
-    fun pause() {
+    private fun stopRender() {
         renderThread?.let {
             it.running = false
-            try { it.join() } catch (e: InterruptedException) {}
+            try { it.join(500) } catch (e: InterruptedException) {}
         }
         renderThread = null
-    }
-
-    fun resume() {
-        if (renderThread == null) {
-            renderThread = RenderThread(holder).also {
-                it.running = true
-                it.start()
-            }
-        }
     }
 
     inner class RenderThread(private val holder: SurfaceHolder) : Thread() {
@@ -64,7 +73,23 @@ class GBAView(context: Context) : SurfaceView(context), SurfaceHolder.Callback {
 
                 val canvas: Canvas? = holder.lockCanvas()
                 canvas?.let {
-                    val dst = Rect(0, 0, it.width, it.height)
+                    val sw = it.width
+                    val sh = it.height
+                    val gameRatio = GBA_W.toFloat() / GBA_H.toFloat()
+                    val screenRatio = sw.toFloat() / sh.toFloat()
+                    val dstW: Int
+                    val dstH: Int
+                    if (screenRatio > gameRatio) {
+                        dstH = sh
+                        dstW = (sh * gameRatio).toInt()
+                    } else {
+                        dstW = sw
+                        dstH = (sw / gameRatio).toInt()
+                    }
+                    val left = (sw - dstW) / 2
+                    val top = (sh - dstH) / 2
+                    it.drawColor(android.graphics.Color.BLACK)
+                    val dst = Rect(left, top, left + dstW, top + dstH)
                     it.drawBitmap(frameBitmap, null, dst, null)
                     holder.unlockCanvasAndPost(it)
                 }
