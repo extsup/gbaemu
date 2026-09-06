@@ -1,10 +1,12 @@
 package com.emu.gba
 
 import android.content.Context
+import android.util.Log
 
 object GBAEngine {
 
     private var corePath: String = ""
+    private const val TAG = "GBAEngine"
 
     const val KEY_A      = (1 shl 0)
     const val KEY_B      = (1 shl 1)
@@ -24,8 +26,21 @@ object GBAEngine {
     }
 
     fun initCore(context: Context): Boolean {
-        corePath = context.applicationInfo.nativeLibraryDir + "/gpsp_libretro.so"
-        return nativeInit(corePath)
+        val possiblePaths = listOf(
+            context.applicationInfo.nativeLibraryDir + "/gpsp_libretro.so",
+            "/data/data/${context.packageName}/lib/gpsp_libretro.so"
+        )
+        for (p in possiblePaths) {
+            Log.d(TAG, "Trying core: $p")
+            if (nativeInit(p)) {
+                corePath = p
+                Log.d(TAG, "Core loaded: $p")
+                return true
+            } else {
+                Log.e(TAG, "Failed to load from: $p")
+            }
+        }
+        return false
     }
 
     external fun nativeInit(soPath: String): Boolean
