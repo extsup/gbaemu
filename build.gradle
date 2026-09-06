@@ -1,57 +1,18 @@
-plugins {
-    id 'com.android.application'
-    id 'org.jetbrains.kotlin.android'
-}
-
-android {
-    compileSdkVersion 33
-    ndkVersion "21.4.7075529"
-
-    defaultConfig {
-        applicationId "com.emu.gba"
-        minSdkVersion 21
-        targetSdkVersion 33
-        versionCode 1
-        versionName "1.0"
-
-        externalNativeBuild {
-            ndkBuild {
-                abiFilters "armeabi-v7a", "arm64-v8a"
-            }
-        }
+buildscript {
+    ext.kotlin_version = "1.8.0"
+    repositories {
+        google()
+        mavenCentral()
     }
-
-    externalNativeBuild {
-        ndkBuild {
-            path "jni/Android.mk"
-        }
-    }
-
-    sourceSets {
-        main {
-            manifest.srcFile 'app/src/main/AndroidManifest.xml'
-            kotlin.srcDirs = ['app/src/main/kotlin']
-            res.srcDirs = ['app/src/main/res']
-            jniLibs.srcDirs = ['prebuilt']
-        }
-    }
-
-    buildTypes {
-        release {
-            minifyEnabled false
-        }
-    }
-
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
-    }
-
-    kotlinOptions {
-        jvmTarget = '1.8'
+    dependencies {
+        classpath "com.android.tools.build:gradle:8.1.0"
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
 
-dependencies {
-    implementation "org.jetbrains.kotlin:kotlin-stdlib:1.8.0"
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
 }
