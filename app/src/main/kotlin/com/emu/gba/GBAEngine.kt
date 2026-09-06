@@ -2,7 +2,7 @@ package com.emu.gba
 
 object GBAEngine {
 
-    const val CORE_PATH = "/storage/emulated/0/ApkBuilder/GBAemu/libs/armeabi-v7a/gpsp_libretro.so"
+    const val CORE_PATH = "" // diisi dari GameActivity via context.applicationInfo.nativeLibsDir
 
     const val KEY_A      = (1 shl 0)
     const val KEY_B      = (1 shl 1)
