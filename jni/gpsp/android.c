@@ -190,7 +190,8 @@ JNIEXPORT jboolean JNICALL
 Java_com_emu_gba_GBAEngine_nativeInit(JNIEnv *env, jobject obj, jstring soPath) {
     const char *path = (*env)->GetStringUTFChars(env, soPath, NULL);
     LOGI("Loading core: %s", path);
-    libhandle = dlopen(path, RTLD_LAZY);
+    libhandle = dlopen(path, RTLD_NOLOAD | RTLD_LAZY);
+    if (!libhandle) { libhandle = dlopen(path, RTLD_LAZY | RTLD_GLOBAL); }
     (*env)->ReleaseStringUTFChars(env, soPath, path);
     if (!libhandle) { LOGE("dlopen failed: %s", dlerror()); return JNI_FALSE; }
 
