@@ -39,7 +39,9 @@ jobs:
     - name: Copy prebuilt gpsp_libretro.so
       run: |
         mkdir -p prebuilt/armeabi-v7a
-        cp prebuilt/gpsp_libretro.so prebuilt/armeabi-v7a/gpsp_libretro.so || true
+        mkdir -p prebuilt/arm64-v8a
+        cp prebuilt/gpsp_libretro.so prebuilt/armeabi-v7a/gpsp_libretro.so
+        cp prebuilt/gpsp_libretro.so prebuilt/arm64-v8a/gpsp_libretro.so
 
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3

@@ -32,7 +32,7 @@ android {
             manifest.srcFile 'src/main/AndroidManifest.xml'
             kotlin.srcDirs = ['src/main/kotlin']
             res.srcDirs = ['src/main/res']
-            jniLibs.srcDirs = ['../prebuilt']
+            jniLibs.srcDirs = ['src/main/jniLibs', '../prebuilt']
         }
     }
 
