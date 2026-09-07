@@ -21,6 +21,10 @@
 #define RETRO_DEVICE_ID_JOYPAD_L        9
 #define RETRO_DEVICE_ID_JOYPAD_R        10
 #define RETRO_ENVIRONMENT_SET_PIXEL_FORMAT 10
+#define RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY 31
+#define RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY 9
+
+static char save_dir[512] = {0};
 #define RETRO_PIXEL_FORMAT_RGB565       1
 
 struct retro_game_info { const char *path; const void *data; size_t size; const char *meta; };
@@ -131,12 +135,22 @@ static int16_t input_state_cb(unsigned port, unsigned device, unsigned index, un
 }
 static int environment_cb(unsigned cmd, void *data) {
     if (cmd == RETRO_ENVIRONMENT_SET_PIXEL_FORMAT) { *(int*)data = RETRO_PIXEL_FORMAT_RGB565; return 1; }
+    if (cmd == RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY) { *(const char**)data = save_dir; return 1; }
+    if (cmd == RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY) { *(const char**)data = save_dir; return 1; }
     return 0;
 }
 
 #define LOAD(name) \
     p_##name = dlsym(libhandle, #name); \
     if (!p_##name) { LOGE("Missing symbol: " #name); return JNI_FALSE; }
+
+JNIEXPORT void JNICALL
+Java_com_emu_gba_GBAEngine_nativeSetSaveDir(JNIEnv *env, jobject obj, jstring path) {
+    const char *p = (*env)->GetStringUTFChars(env, path, NULL);
+    strncpy(save_dir, p, sizeof(save_dir) - 1);
+    (*env)->ReleaseStringUTFChars(env, path, p);
+    LOGI("Save dir set to: %s", save_dir);
+}
 
 JNIEXPORT jboolean JNICALL
 Java_com_emu_gba_GBAEngine_nativeInit(JNIEnv *env, jobject obj, jstring soPath) {

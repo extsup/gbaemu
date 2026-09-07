@@ -35,6 +35,10 @@ class GameActivity : Activity() {
             return
         }
 
+           val saveDir = java.io.File(android.os.Environment.getExternalStorageDirectory(), "GBAemu/saves")
+        saveDir.mkdirs()
+        GBAEngine.nativeSetSaveDir(saveDir.absolutePath)
+
         // Inisialisasi core terlebih dahulu
         if (!GBAEngine.initCore(this)) {
             Toast.makeText(this, "Gagal load core!", Toast.LENGTH_SHORT).show()
@@ -54,6 +58,9 @@ class GameActivity : Activity() {
             finish()
             return
         }
+
+        val romName = romPath.substringAfterLast("/").substringBeforeLast(".")
+        GBANotification.show(this, romName)
 
         gbaView = GBAView(this)
         controller = VirtualController(this)
@@ -134,6 +141,7 @@ class GameActivity : Activity() {
         super.onDestroy()
         if (::gbaView.isInitialized) gbaView.pause()
         if (::audio.isInitialized) audio.release()
+        GBANotification.hide(this)
         GBAEngine.nativeCleanup()
     }
 }
