@@ -58,11 +58,7 @@ class VirtualController(context: Context) : View(context) {
     // Pastikan tombol selalu tergambar
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        if (rects.isEmpty()) {
-            initDefaultSizes(width, height)
-            loadPositions(width, height)
-            buildRects(width, height)
-        }
+        // onSizeChanged akan handle init saat ukuran sudah tersedia
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -71,14 +67,13 @@ class VirtualController(context: Context) : View(context) {
     }
 
     private fun initDefaultSizes(w: Int, h: Int) {
+        if (w == 0 || h == 0) return
         val bw = w * 0.13f; val bh = h * 0.20f
         val lbw = w * 0.30f; val lbh = h * 0.20f
         val sbw = w * 0.14f; val sbh = h * 0.10f
         for (name in BUTTON_NAMES) {
-            if (btnW[name] == null) {
-                btnW[name] = when (name) { "L","R" -> lbw; "SELECT","START" -> sbw; else -> bw }
-                btnH[name] = when (name) { "L","R" -> lbh; "SELECT","START" -> sbh; else -> bh }
-            }
+            btnW[name] = when (name) { "L","R" -> lbw; "SELECT","START" -> sbw; else -> bw }
+            btnH[name] = when (name) { "L","R" -> lbh; "SELECT","START" -> sbh; else -> bh }
         }
     }
 
