@@ -12,12 +12,9 @@ import android.view.MotionEvent
 import android.view.View
 
 class VirtualController(context: Context) : View(context) {
-
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val drawables = mutableMapOf<String, Drawable?>()
-    private val prefs: SharedPreferences =
-        context.getSharedPreferences("GBAemuPrefs", Context.MODE_PRIVATE)
-
+    private val prefs: SharedPreferences = context.getSharedPreferences("GBAemuPrefs", Context.MODE_PRIVATE)
     var editMode = false
 
     companion object {
@@ -28,7 +25,6 @@ class VirtualController(context: Context) : View(context) {
         private const val COLOR_SS      = 0x99666666.toInt()
         private const val COLOR_PRESSED = 0xFFFFFFAA.toInt()
         private const val COLOR_EDIT    = 0xAAFFAA00.toInt()
-
         val BUTTON_NAMES = listOf("UP","DOWN","LEFT","RIGHT","A","B","L","R","SELECT","START")
     }
 
@@ -37,17 +33,11 @@ class VirtualController(context: Context) : View(context) {
     private val btnW  = mutableMapOf<String, Float>()
     private val btnH  = mutableMapOf<String, Float>()
     private val rects = mutableMapOf<String, RectF>()
-
     private val pressedButtons = mutableSetOf<String>()
     private val pointerMap     = mutableMapOf<Int, String>()
-
-    private var dragPtr: Int = -1
-    private var dragBtn: String? = null
-    private var dragOffX = 0f
-    private var dragOffY = 0f
+    private var currentKeys = 0
 
     init {
-        isHapticFeedbackEnabled = false
         drawables["UP"]     = ContextCompat.getDrawable(context, R.drawable.ic_dpad_up)
         drawables["DOWN"]   = ContextCompat.getDrawable(context, R.drawable.ic_dpad_down)
         drawables["LEFT"]   = ContextCompat.getDrawable(context, R.drawable.ic_dpad_left)
@@ -60,98 +50,10 @@ class VirtualController(context: Context) : View(context) {
         drawables["START"]  = ContextCompat.getDrawable(context, R.drawable.ic_btn_start)
     }
 
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        super.onSizeChanged(w, h, oldw, oldh)
-        initDefaultSizes(w, h)
-        loadPositions(w, h)
-        buildRects(w, h)
-    }
-
-    private fun initDefaultSizes(w: Int, h: Int) {
-        val bw = w * 0.13f
-        val bh = h * 0.20f
-        val lbw = w * 0.30f
-        val lbh = h * 0.20f
-        val sbw = w * 0.14f
-        val sbh = h * 0.10f
-
-        for (name in BUTTON_NAMES) {
-            if (btnW[name] == null) {
-                btnW[name] = when (name) {
-                    "L","R"          -> lbw
-                    "SELECT","START" -> sbw
-                    else             -> bw
-                }
-                btnH[name] = when (name) {
-                    "L","R"          -> lbh
-                    "SELECT","START" -> sbh
-                    else             -> bh
-                }
-            }
-        }
-    }
-
-    private fun defaultCX(name: String, w: Int, h: Int): Float {
-        val bw = w * 0.13f
-        val pad = w * 0.03f
-        return when (name) {
-            "LEFT"   -> pad + bw * 0.5f
-            "RIGHT"  -> pad + bw * 2.5f
-            "UP","DOWN" -> pad + bw * 1.5f
-            "A"      -> w - pad - bw * 0.5f
-            "B"      -> w - pad - bw * 1.5f
-            "L"      -> pad + w * 0.15f
-            "R"      -> w - pad - w * 0.15f
-            "SELECT" -> w * 0.42f
-            "START"  -> w * 0.58f
-            else     -> w / 2f
-        }
-    }
-
-    private fun defaultCY(name: String, w: Int, h: Int): Float {
-        val bh = h * 0.20f
-        val pad = h * 0.03f
-        return when (name) {
-            "UP"     -> h - bh * 2.5f - pad
-            "DOWN"   -> h - bh * 0.5f - pad
-            "LEFT","RIGHT" -> h - bh * 1.5f - pad
-            "A"      -> h - bh * 1.5f - pad
-            "B"      -> h - bh * 0.5f - pad
-            "L","R"  -> pad + h * 0.15f
-            "SELECT","START" -> h - h * 0.08f
-            else     -> h / 2f
-        }
-    }
-
-    private fun loadPositions(w: Int, h: Int) {
-        for (name in BUTTON_NAMES) {
-            btnCX[name] = prefs.getFloat("btn_cx_$name", defaultCX(name, w, h))
-            btnCY[name] = prefs.getFloat("btn_cy_$name", defaultCY(name, w, h))
-        }
-    }
-
-    private fun savePosition(name: String) {
-        prefs.edit()
-            .putFloat("btn_cx_$name", btnCX[name] ?: 0f)
-            .putFloat("btn_cy_$name", btnCY[name] ?: 0f)
-            .apply()
-    }
-
-    private fun buildRects(w: Int, h: Int) {
-        for (name in BUTTON_NAMES) {
-            val cx = btnCX[name] ?: defaultCX(name, w, h)
-            val cy = btnCY[name] ?: defaultCY(name, w, h)
-            val hw = (btnW[name] ?: w * 0.13f) / 2f
-            val hh = (btnH[name] ?: h * 0.20f) / 2f
-            rects[name] = RectF(cx - hw, cy - hh, cx + hw, cy + hh)
-        }
-    }
-
     override fun onDraw(canvas: Canvas) {
         for (name in BUTTON_NAMES) {
             val rect = rects[name] ?: continue
             val pressed = pressedButtons.contains(name)
-
             if (editMode) {
                 paint.color = COLOR_EDIT
                 canvas.drawRoundRect(rect, 16f, 16f, paint)
@@ -184,7 +86,6 @@ class VirtualController(context: Context) : View(context) {
         return handleGameTouch(event)
     }
 
-    // DIPERBAIKI DI SINI (Anti Karakter Gemetar):
     private fun handleGameTouch(event: MotionEvent): Boolean {
         val idx = event.actionIndex
         val pid = event.getPointerId(idx)
@@ -193,36 +94,23 @@ class VirtualController(context: Context) : View(context) {
                 getButtonAt(event.getX(idx), event.getY(idx))?.let {
                     pointerMap[pid] = it
                     pressedButtons.add(it)
-                    GBAEngine.pressKey(keyCode(it))
+                    currentKeys = currentKeys or keyCode(it)
+                    GBAEngine.nativeSetInput(currentKeys)
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
                 pointerMap.remove(pid)?.let {
                     pressedButtons.remove(it)
-                    GBAEngine.releaseKey(keyCode(it))
+                    currentKeys = currentKeys and keyCode(it).inv()
+                    GBAEngine.nativeSetInput(currentKeys)
                 }
             }
             MotionEvent.ACTION_MOVE -> {
-                // HANYA pindah jika jari berpindah ke tombol LAIN yang valid.
-                // Jika jari keluar area tombol (null), TOMBOL TETAP DITAHAN
-                // agar karakter tidak gemetar saat jari sedikit bergeser.
-                for (i in 0 until event.pointerCount) {
-                    val p = event.getPointerId(i)
-                    val oldBtn = pointerMap[p]
-                    val newBtn = getButtonAt(event.getX(i), event.getY(i))
-                    
-                    if (oldBtn != null && newBtn != null && oldBtn != newBtn) {
-                        pressedButtons.remove(oldBtn)
-                        GBAEngine.releaseKey(keyCode(oldBtn))
-                        
-                        pointerMap[p] = newBtn
-                        pressedButtons.add(newBtn)
-                        GBAEngine.pressKey(keyCode(newBtn))
-                    }
-                }
+                // Tombol terkunci, tidak berubah saat jari bergeser
             }
             MotionEvent.ACTION_CANCEL -> {
-                pressedButtons.forEach { GBAEngine.releaseKey(keyCode(it)) }
+                currentKeys = 0
+                GBAEngine.nativeSetInput(0)
                 pressedButtons.clear()
                 pointerMap.clear()
             }
@@ -252,10 +140,8 @@ class VirtualController(context: Context) : View(context) {
                 val db = dragBtn ?: return true
                 for (i in 0 until event.pointerCount) {
                     if (event.getPointerId(i) == dragPtr) {
-                        val nx = (event.getX(i) - dragOffX).coerceIn(
-                            (btnW[db] ?: 0f) / 2f, width - (btnW[db] ?: 0f) / 2f)
-                        val ny = (event.getY(i) - dragOffY).coerceIn(
-                            (btnH[db] ?: 0f) / 2f, height - (btnH[db] ?: 0f) / 2f)
+                        val nx = (event.getX(i) - dragOffX).coerceIn((btnW[db] ?: 0f) / 2f, width - (btnW[db] ?: 0f) / 2f)
+                        val ny = (event.getY(i) - dragOffY).coerceIn((btnH[db] ?: 0f) / 2f, height - (btnH[db] ?: 0f) / 2f)
                         btnCX[db] = nx
                         btnCY[db] = ny
                         buildRects(width, height)
@@ -275,6 +161,59 @@ class VirtualController(context: Context) : View(context) {
         return true
     }
 
+    private fun buildRects(w: Int, h: Int) {
+        for (name in BUTTON_NAMES) {
+            val cx = btnCX[name] ?: defaultCX(name, w, h)
+            val cy = btnCY[name] ?: defaultCY(name, w, h)
+            val hw = (btnW[name] ?: w * 0.13f) / 2f
+            val hh = (btnH[name] ?: h * 0.20f) / 2f
+            rects[name] = RectF(cx - hw, cy - hh, cx + hw, cy + hh)
+        }
+    }
+
+    private fun defaultCX(name: String, w: Int, h: Int): Float {
+        val bw = w * 0.13f
+        val pad = w * 0.03f
+        return when (name) {
+            "LEFT" -> pad + bw * 0.5f
+            "RIGHT" -> pad + bw * 2.5f
+            "UP","DOWN" -> pad + bw * 1.5f
+            "A" -> w - pad - bw * 0.5f
+            "B" -> w - pad - bw * 1.5f
+            "L" -> pad + w * 0.15f
+            "R" -> w - pad - w * 0.15f
+            "SELECT" -> w * 0.42f
+            "START" -> w * 0.58f
+            else -> w / 2f
+        }
+    }
+
+    private fun defaultCY(name: String, w: Int, h: Int): Float {
+        val bh = h * 0.20f
+        val pad = h * 0.03f
+        return when (name) {
+            "UP" -> h - bh * 2.5f - pad
+            "DOWN" -> h - bh * 0.5f - pad
+            "LEFT","RIGHT" -> h - bh * 1.5f - pad
+            "A" -> h - bh * 1.5f - pad
+            "B" -> h - bh * 0.5f - pad
+            "L","R" -> pad + h * 0.15f
+            "SELECT","START" -> h - h * 0.08f
+            else -> h / 2f
+        }
+    }
+
+    private fun loadPositions(w: Int, h: Int) {
+        for (name in BUTTON_NAMES) {
+            btnCX[name] = prefs.getFloat("btn_cx_$name", defaultCX(name, w, h))
+            btnCY[name] = prefs.getFloat("btn_cy_$name", defaultCY(name, w, h))
+        }
+    }
+
+    private fun savePosition(name: String) {
+        prefs.edit().putFloat("btn_cx_$name", btnCX[name] ?: 0f).putFloat("btn_cy_$name", btnCY[name] ?: 0f).apply()
+    }
+
     fun resetPositions() {
         val editor = prefs.edit()
         for (name in BUTTON_NAMES) {
@@ -290,16 +229,16 @@ class VirtualController(context: Context) : View(context) {
         BUTTON_NAMES.firstOrNull { rects[it]?.contains(x, y) == true }
 
     private fun keyCode(btn: String) = when (btn) {
-        "A"      -> GBAEngine.KEY_A
-        "B"      -> GBAEngine.KEY_B
+        "A" -> GBAEngine.KEY_A
+        "B" -> GBAEngine.KEY_B
         "SELECT" -> GBAEngine.KEY_SELECT
-        "START"  -> GBAEngine.KEY_START
-        "RIGHT"  -> GBAEngine.KEY_RIGHT
-        "LEFT"   -> GBAEngine.KEY_LEFT
-        "UP"     -> GBAEngine.KEY_UP
-        "DOWN"   -> GBAEngine.KEY_DOWN
-        "R"      -> GBAEngine.KEY_R
-        "L"      -> GBAEngine.KEY_L
-        else     -> 0
+        "START" -> GBAEngine.KEY_START
+        "RIGHT" -> GBAEngine.KEY_RIGHT
+        "LEFT" -> GBAEngine.KEY_LEFT
+        "UP" -> GBAEngine.KEY_UP
+        "DOWN" -> GBAEngine.KEY_DOWN
+        "R" -> GBAEngine.KEY_R
+        "L" -> GBAEngine.KEY_L
+        else -> 0
     }
 }
