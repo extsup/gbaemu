@@ -49,7 +49,7 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:gravity="center"
+        android:gravity="top"
         android:text="Tidak ada ROM\n\nKetuk + untuk pilih folder"
         android:textColor="#ffffff60"
         android:textSize="16sp"

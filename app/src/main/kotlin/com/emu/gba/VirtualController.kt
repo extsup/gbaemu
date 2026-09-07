@@ -32,7 +32,6 @@ class VirtualController(context: Context) : View(context) {
         val BUTTON_NAMES = listOf("UP","DOWN","LEFT","RIGHT","A","B","L","R","SELECT","START")
     }
 
-    // posisi center tiap tombol (relative 0.0-1.0)
     private val btnCX = mutableMapOf<String, Float>()
     private val btnCY = mutableMapOf<String, Float>()
     private val btnW  = mutableMapOf<String, Float>()
@@ -42,13 +41,13 @@ class VirtualController(context: Context) : View(context) {
     private val pressedButtons = mutableSetOf<String>()
     private val pointerMap     = mutableMapOf<Int, String>()
 
-    // drag state
     private var dragPtr: Int = -1
     private var dragBtn: String? = null
     private var dragOffX = 0f
     private var dragOffY = 0f
 
     init {
+        isHapticFeedbackEnabled = false
         drawables["UP"]     = ContextCompat.getDrawable(context, R.drawable.ic_dpad_up)
         drawables["DOWN"]   = ContextCompat.getDrawable(context, R.drawable.ic_dpad_down)
         drawables["LEFT"]   = ContextCompat.getDrawable(context, R.drawable.ic_dpad_left)
@@ -71,8 +70,8 @@ class VirtualController(context: Context) : View(context) {
     private fun initDefaultSizes(w: Int, h: Int) {
         val bw = w * 0.13f
         val bh = h * 0.20f
-        val lbw = w * 0.20f
-        val lbh = h * 0.12f
+        val lbw = w * 0.30f
+        val lbh = h * 0.20f
         val sbw = w * 0.14f
         val sbh = h * 0.10f
 
@@ -101,8 +100,8 @@ class VirtualController(context: Context) : View(context) {
             "UP","DOWN" -> pad + bw * 1.5f
             "A"      -> w - pad - bw * 0.5f
             "B"      -> w - pad - bw * 1.5f
-            "L"      -> pad + w * 0.10f
-            "R"      -> w - pad - w * 0.10f
+            "L"      -> pad + w * 0.15f
+            "R"      -> w - pad - w * 0.15f
             "SELECT" -> w * 0.42f
             "START"  -> w * 0.58f
             else     -> w / 2f
@@ -118,7 +117,7 @@ class VirtualController(context: Context) : View(context) {
             "LEFT","RIGHT" -> h - bh * 1.5f - pad
             "A"      -> h - bh * 1.5f - pad
             "B"      -> h - bh * 0.5f - pad
-            "L","R"  -> pad + h * 0.06f
+            "L","R"  -> pad + h * 0.15f
             "SELECT","START" -> h - h * 0.08f
             else     -> h / 2f
         }
@@ -185,6 +184,7 @@ class VirtualController(context: Context) : View(context) {
         return handleGameTouch(event)
     }
 
+    // DIPERBAIKI DI SINI (Anti Karakter Gemetar):
     private fun handleGameTouch(event: MotionEvent): Boolean {
         val idx = event.actionIndex
         val pid = event.getPointerId(idx)
@@ -203,22 +203,21 @@ class VirtualController(context: Context) : View(context) {
                 }
             }
             MotionEvent.ACTION_MOVE -> {
+                // HANYA pindah jika jari berpindah ke tombol LAIN yang valid.
+                // Jika jari keluar area tombol (null), TOMBOL TETAP DITAHAN
+                // agar karakter tidak gemetar saat jari sedikit bergeser.
                 for (i in 0 until event.pointerCount) {
                     val p = event.getPointerId(i)
-                    val newBtn = getButtonAt(event.getX(i), event.getY(i))
                     val oldBtn = pointerMap[p]
-                    if (newBtn != oldBtn) {
-                        oldBtn?.let {
-                            pressedButtons.remove(it)
-                            GBAEngine.releaseKey(keyCode(it))
-                        }
-                        if (newBtn != null) {
-                            pointerMap[p] = newBtn
-                            pressedButtons.add(newBtn)
-                            GBAEngine.pressKey(keyCode(newBtn))
-                        } else {
-                            pointerMap.remove(p)
-                        }
+                    val newBtn = getButtonAt(event.getX(i), event.getY(i))
+                    
+                    if (oldBtn != null && newBtn != null && oldBtn != newBtn) {
+                        pressedButtons.remove(oldBtn)
+                        GBAEngine.releaseKey(keyCode(oldBtn))
+                        
+                        pointerMap[p] = newBtn
+                        pressedButtons.add(newBtn)
+                        GBAEngine.pressKey(keyCode(newBtn))
                     }
                 }
             }

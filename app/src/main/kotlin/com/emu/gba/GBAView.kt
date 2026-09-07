@@ -1,106 +1,164 @@
 package com.emu.gba
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.Rect
-import android.view.SurfaceHolder
-import android.view.SurfaceView
+import android.opengl.GLES20
+import android.opengl.GLSurfaceView
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.FloatBuffer
+import javax.microedition.khronos.egl.EGLConfig
+import javax.microedition.khronos.opengles.GL10
 
-class GBAView(context: Context) : SurfaceView(context), SurfaceHolder.Callback {
+class GBAView(context: Context) : GLSurfaceView(context) {
 
-    private val frameBitmap = Bitmap.createBitmap(GBA_W, GBA_H, Bitmap.Config.ARGB_8888)
-    private val frameBuffer = IntArray(GBA_W * GBA_H)
-    private var renderThread: RenderThread? = null
-
-    companion object {
-        const val GBA_W = 240
-        const val GBA_H = 160
-    }
+    private val gbaRenderer = GBARenderer()
 
     init {
-        holder.addCallback(this)
+        setEGLContextClientVersion(2)
+        setRenderer(gbaRenderer)
+        renderMode = RENDERMODE_CONTINUOUSLY
     }
 
-    override fun surfaceCreated(holder: SurfaceHolder) {
-        startRender(holder)
-    }
+    fun pause() { onPause() }
+    fun resume() { onResume() }
 
-    override fun surfaceDestroyed(holder: SurfaceHolder) {
-        stopRender()
-    }
+    private class GBARenderer : GLSurfaceView.Renderer {
 
-    override fun surfaceChanged(holder: SurfaceHolder, format: Int, w: Int, h: Int) {}
+        private val GBA_W = 240
+        private val GBA_H = 160
+        private val frameBuffer = IntArray(GBA_W * GBA_H)
+        private val frameBufferSize = GBA_W * GBA_H
 
-    fun pause() {
-        stopRender()
-    }
+        private var program = 0
+        private var textureId = 0
+        private var positionHandle = 0
+        private var texCoordHandle = 0
 
-    fun resume() {
-        if (holder.surface.isValid) {
-            startRender(holder)
-        }
-    }
+        private val vertices = floatArrayOf(
+            -1f, -1f, 0f, 1f,
+             1f, -1f, 1f, 1f,
+            -1f,  1f, 0f, 0f,
+             1f,  1f, 1f, 0f
+        )
 
-    private fun startRender(holder: SurfaceHolder) {
-        stopRender()
-        renderThread = RenderThread(holder).also {
-            it.running = true
-            it.start()
-        }
-    }
+        private var vertexBuffer: FloatBuffer = ByteBuffer.allocateDirect(vertices.size * 4)
+            .order(ByteOrder.nativeOrder())
+            .asFloatBuffer()
+            .apply { put(vertices); position(0) }
 
-    private fun stopRender() {
-        renderThread?.let {
-            it.running = false
-            try { it.join(500) } catch (e: InterruptedException) {}
-        }
-        renderThread = null
-    }
-
-    inner class RenderThread(private val holder: SurfaceHolder) : Thread() {
-        @Volatile var running = false
-        private val FRAME_TIME = 1000L / 60
-
-        override fun run() {
-            while (running) {
-                val start = System.currentTimeMillis()
-
-                GBAEngine.nativeRunFrame()
-
-                if (GBAEngine.nativeGetFramebuffer(frameBuffer)) {
-                    frameBitmap.setPixels(frameBuffer, 0, GBA_W, 0, 0, GBA_W, GBA_H)
-                }
-
-                val canvas: Canvas? = holder.lockCanvas()
-                canvas?.let {
-                    val sw = it.width
-                    val sh = it.height
-                    val gameRatio = GBA_W.toFloat() / GBA_H.toFloat()
-                    val screenRatio = sw.toFloat() / sh.toFloat()
-                    val dstW: Int
-                    val dstH: Int
-                    if (screenRatio > gameRatio) {
-                        dstH = sh
-                        dstW = (sh * gameRatio).toInt()
-                    } else {
-                        dstW = sw
-                        dstH = (sw / gameRatio).toInt()
-                    }
-                    val left = (sw - dstW) / 2
-                    val top = (sh - dstH) / 2
-                    it.drawColor(android.graphics.Color.BLACK)
-                    val dst = Rect(left, top, left + dstW, top + dstH)
-                    val prefs = context.getSharedPreferences("GBAemuPrefs", android.content.Context.MODE_PRIVATE)
-                    val paint = Paint().apply { isFilterBitmap = prefs.getBoolean("bilinear", true) }
-                    it.drawBitmap(frameBitmap, null, dst, paint)
-                    holder.unlockCanvasAndPost(it)
-                }
-
-                val sleep = FRAME_TIME - (System.currentTimeMillis() - start)
-                if (sleep > 0) try { Thread.sleep(sleep) } catch (e: InterruptedException) {}
+        private val vertexShaderCode = """
+            attribute vec2 aPosition;
+            attribute vec2 aTexCoord;
+            varying vec2 vTexCoord;
+            void main() {
+                gl_Position = vec4(aPosition, 0.0, 1.0);
+                vTexCoord = aTexCoord;
             }
+        """.trimIndent()
+
+        private val fragmentShaderCode = """
+            precision mediump float;
+            varying vec2 vTexCoord;
+            uniform sampler2D uTexture;
+            void main() {
+                gl_FragColor = texture2D(uTexture, vTexCoord);
+            }
+        """.trimIndent()
+
+        override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
+            GLES20.glClearColor(0f, 0f, 0f, 1f)
+
+            val vertexShader = loadShader(GLES20.GL_VERTEX_SHADER, vertexShaderCode)
+            val fragmentShader = loadShader(GLES20.GL_FRAGMENT_SHADER, fragmentShaderCode)
+
+            program = GLES20.glCreateProgram().also {
+                GLES20.glAttachShader(it, vertexShader)
+                GLES20.glAttachShader(it, fragmentShader)
+                GLES20.glLinkProgram(it)
+            }
+
+            positionHandle = GLES20.glGetAttribLocation(program, "aPosition")
+            texCoordHandle = GLES20.glGetAttribLocation(program, "aTexCoord")
+
+            val texIds = IntArray(1)
+            GLES20.glGenTextures(1, texIds, 0)
+            textureId = texIds[0]
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureId)
+            
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_NEAREST)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_NEAREST)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+
+            GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, GBA_W, GBA_H, 0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null)
+        }
+
+        override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
+            // Logika agar Game selalu di ATAS saat Portrait
+            val gameRatio = GBA_W.toFloat() / GBA_H.toFloat() // 1.5 (3:2)
+            val screenRatio = width.toFloat() / height.toFloat()
+            
+            var vw = width
+            var vh = height
+            var vx = 0
+            var vy = 0
+
+            if (screenRatio > gameRatio) {
+                // Landscape (layar lebar): penuh ke samping, di tengah horizontal
+                vh = height
+                vw = (height * gameRatio).toInt()
+                vx = (width - vw) / 2
+                vy = 0
+            } else {
+                // Portrait (layar tinggi): penuh ke samping, DI ATAS (atas = 0)
+                vw = width
+                vh = (width / gameRatio).toInt() // Tinggi sesuai rasio game
+                vx = 0
+                vy = 0 // PENTING: 0 berarti di atas layar
+            }
+
+            GLES20.glViewport(vx, vy, vw, vh)
+        }
+
+        override fun onDrawFrame(gl: GL10?) {
+            GBAEngine.nativeRunFrame()
+            GBAEngine.nativeGetFramebuffer(frameBuffer)
+
+            val buffer = ByteBuffer.allocateDirect(frameBufferSize * 4)
+                .order(ByteOrder.nativeOrder())
+                .asIntBuffer()
+            buffer.put(frameBuffer)
+            buffer.position(0)
+
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureId)
+            GLES20.glTexSubImage2D(GLES20.GL_TEXTURE_2D, 0, 0, 0, GBA_W, GBA_H, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, buffer)
+
+            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+            GLES20.glUseProgram(program)
+
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureId)
+
+            GLES20.glEnableVertexAttribArray(positionHandle)
+            GLES20.glVertexAttribPointer(positionHandle, 2, GLES20.GL_FLOAT, false, 16, vertexBuffer)
+
+            GLES20.glEnableVertexAttribArray(texCoordHandle)
+            vertexBuffer.position(2)
+            GLES20.glVertexAttribPointer(texCoordHandle, 2, GLES20.GL_FLOAT, false, 16, vertexBuffer)
+            
+            vertexBuffer.position(0)
+
+            GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+
+            GLES20.glDisableVertexAttribArray(positionHandle)
+            GLES20.glDisableVertexAttribArray(texCoordHandle)
+        }
+
+        private fun loadShader(type: Int, shaderCode: String): Int {
+            val shader = GLES20.glCreateShader(type)
+            GLES20.glShaderSource(shader, shaderCode)
+            GLES20.glCompileShader(shader)
+            return shader
         }
     }
 }
