@@ -37,6 +37,12 @@ class VirtualController(context: Context) : View(context) {
     private val pointerMap     = mutableMapOf<Int, String>()
     private var currentKeys = 0
 
+    // 🔥 INI YANG HILANG KEMARIN (Deklarasi variabel edit mode)
+    private var dragPtr: Int = -1
+    private var dragBtn: String? = null
+    private var dragOffX = 0f
+    private var dragOffY = 0f
+
     init {
         drawables["UP"]     = ContextCompat.getDrawable(context, R.drawable.ic_dpad_up)
         drawables["DOWN"]   = ContextCompat.getDrawable(context, R.drawable.ic_dpad_down)
