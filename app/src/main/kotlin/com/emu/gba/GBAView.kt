@@ -10,6 +10,7 @@ import android.view.SurfaceView
 class GBAView(context: Context) : SurfaceView(context), SurfaceHolder.Callback {
 
     private val frameBitmap = Bitmap.createBitmap(GBA_W, GBA_H, Bitmap.Config.ARGB_8888)
+    private val frameBuffer = IntArray(GBA_W * GBA_H)
     private var renderThread: RenderThread? = null
 
     companion object {
@@ -67,8 +68,8 @@ class GBAView(context: Context) : SurfaceView(context), SurfaceHolder.Callback {
 
                 GBAEngine.nativeRunFrame()
 
-                GBAEngine.nativeGetFramebuffer()?.let { pixels ->
-                    frameBitmap.setPixels(pixels, 0, GBA_W, 0, 0, GBA_W, GBA_H)
+                if (GBAEngine.nativeGetFramebuffer(frameBuffer)) {
+                    frameBitmap.setPixels(frameBuffer, 0, GBA_W, 0, 0, GBA_W, GBA_H)
                 }
 
                 val canvas: Canvas? = holder.lockCanvas()

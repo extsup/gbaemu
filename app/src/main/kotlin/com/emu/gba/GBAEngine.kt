@@ -55,7 +55,7 @@ object GBAEngine {
     external fun nativeLoadRom(romPath: String): Boolean
     external fun nativeRunFrame()
     external fun nativeSetInput(keys: Int)
-    external fun nativeGetFramebuffer(): IntArray?
+    external fun nativeGetFramebuffer(buf: IntArray): Boolean
     external fun nativeSetSaveDir(path: String)
     external fun nativeReadAudio(buf: ShortArray, len: Int): Int
     external fun nativeCleanup()

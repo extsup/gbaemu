@@ -3,9 +3,11 @@ package com.emu.gba
 import android.app.Activity
 import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.Toast
+import androidx.documentfile.provider.DocumentFile
 import java.io.File
 import java.io.FileOutputStream
 
@@ -35,11 +37,10 @@ class GameActivity : Activity() {
             return
         }
 
-           val saveDir = java.io.File(android.os.Environment.getExternalStorageDirectory(), "GBAemu/saves")
+        val saveDir = File(Environment.getExternalStorageDirectory(), "GBAemu/saves")
         saveDir.mkdirs()
         GBAEngine.nativeSetSaveDir(saveDir.absolutePath)
 
-        // Inisialisasi core terlebih dahulu
         if (!GBAEngine.initCore(this)) {
             Toast.makeText(this, "Gagal load core!", Toast.LENGTH_SHORT).show()
             finish()
@@ -67,57 +68,48 @@ class GameActivity : Activity() {
         audio = GBAAudio()
         audio.start()
 
-        val frame = FrameLayout(this)
-        frame.addView(gbaView)
-        frame.addView(controller)
-        setContentView(frame)
+        val root = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setBackgroundColor(android.graphics.Color.BLACK)
+        }
+
+        val gameParams = android.widget.LinearLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT, 0, 2f
+        )
+        val ctrlParams = android.widget.LinearLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT, 0, 3f
+        )
+
+        root.addView(gbaView, gameParams)
+        root.addView(controller, ctrlParams)
+        setContentView(root)
     }
 
     private fun resolveRomPath(input: String): String? {
+        val romsDir = File(Environment.getExternalStorageDirectory(), "GBAemu/roms")
+        romsDir.mkdirs()
+
         if (!input.startsWith("content://")) {
             val file = File(input)
-            if (file.exists() && file.canRead()) {
-                return copyToCache(file)
-            }
+            if (file.exists() && file.canRead()) return file.absolutePath
             return null
         }
 
-        try {
+        return try {
             val uri = Uri.parse(input)
-            val pfd = contentResolver.openFileDescriptor(uri, "r")
-            if (pfd == null) {
-                Toast.makeText(this, "Tidak dapat membuka file", Toast.LENGTH_SHORT).show()
-                return null
-            }
-            val cacheFile = File(cacheDir, "temp_rom.gba")
-            contentResolver.openInputStream(uri)?.use { inputStream ->
-                FileOutputStream(cacheFile).use { output ->
-                    inputStream.copyTo(output)
+            val fileName = DocumentFile.fromSingleUri(this, uri)?.name ?: "rom.gba"
+            val destFile = File(romsDir, fileName)
+            if (!destFile.exists()) {
+                contentResolver.openInputStream(uri)?.use { input ->
+                    FileOutputStream(destFile).use { output ->
+                        input.copyTo(output)
+                    }
                 }
             }
-            if (cacheFile.exists() && cacheFile.canRead()) {
-                return cacheFile.absolutePath
-            } else {
-                return null
-            }
+            if (destFile.exists()) destFile.absolutePath else null
         } catch (e: Exception) {
             e.printStackTrace()
-            return null
-        }
-    }
-
-    private fun copyToCache(file: File): String? {
-        val cacheFile = File(cacheDir, "temp_rom.gba")
-        try {
-            file.inputStream().use { input ->
-                cacheFile.outputStream().use { output ->
-                    input.copyTo(output)
-                }
-            }
-            return cacheFile.absolutePath
-        } catch (e: Exception) {
-            e.printStackTrace()
-            return null
+            null
         }
     }
 

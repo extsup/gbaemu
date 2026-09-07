@@ -199,13 +199,12 @@ Java_com_emu_gba_GBAEngine_nativeSetInput(JNIEnv *env, jobject obj, jint keys) {
     input_state = (uint32_t)keys;
 }
 
-JNIEXPORT jintArray JNICALL
-Java_com_emu_gba_GBAEngine_nativeGetFramebuffer(JNIEnv *env, jobject obj) {
-    if (!framebuffer) return NULL;
+JNIEXPORT jboolean JNICALL
+Java_com_emu_gba_GBAEngine_nativeGetFramebuffer(JNIEnv *env, jobject obj, jintArray buf) {
+    if (!framebuffer) return JNI_FALSE;
     int size = fb_width * fb_height;
-    jintArray arr = (*env)->NewIntArray(env, size);
-    (*env)->SetIntArrayRegion(env, arr, 0, size, (jint*)framebuffer);
-    return arr;
+    (*env)->SetIntArrayRegion(env, buf, 0, size, (jint*)framebuffer);
+    return JNI_TRUE;
 }
 
 JNIEXPORT void JNICALL
