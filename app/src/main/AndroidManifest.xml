@@ -14,7 +14,7 @@
 
         <activity
             android:name=".MainActivity"
-            android:launchMode="singleTask"
+            android:launchMode="singleInstancePerTask"
             android:label="GBAemu"
             android:exported="true">
             <intent-filter>
