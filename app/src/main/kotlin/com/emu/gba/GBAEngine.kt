@@ -59,6 +59,9 @@ object GBAEngine {
     external fun nativeSetSaveDir(path: String)
     external fun nativeReadAudio(buf: ShortArray, len: Int): Int
     external fun nativeCleanup()
+    external fun nativeGetSramSize(): Int
+    external fun nativeGetSram(buf: ByteArray): Boolean
+    external fun nativeSetSram(buf: ByteArray): Boolean
 
     fun pressKey(key: Int) {
         currentKeys = currentKeys or key

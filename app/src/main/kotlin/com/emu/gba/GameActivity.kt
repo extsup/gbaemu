@@ -21,7 +21,8 @@ class GameActivity : Activity() {
     // Save sync state – diisi di onCreate, dipakai di onPause & onDestroy
     private var internalSaveDir: File? = null
     private var folderUriStr: String? = null   // SAF tree URI (kalau ROM dari SAF)
-    private var romDir: File? = null           // Folder ROM (kalau ROM dari path biasa)
+    private var romDir: File? = null
+    private var romName: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,7 +48,7 @@ class GameActivity : Activity() {
             return
         }
 
-        val romName       = romPath.substringAfterLast("/").substringBeforeLast(".")
+        romName       = romPath.substringAfterLast("/").substringBeforeLast(".")
         val saveDir       = File(filesDir, "saves/$romName").also { it.mkdirs() }
         internalSaveDir   = saveDir
 
@@ -83,6 +84,7 @@ class GameActivity : Activity() {
         }
 
         GBANotification.show(this, romName)
+        loadSram()
 
         // ── 5. Setup views ────────────────────────────────────────────────────
         gbaView    = GBAView(this)
@@ -107,6 +109,23 @@ class GameActivity : Activity() {
      * Push save dari internal dir ke lokasi asal ROM.
      * Dipanggil setelah emulator berhenti (onPause / setelah nativeCleanup).
      */
+    private fun loadSram() {
+        val size = GBAEngine.nativeGetSramSize()
+        if (size <= 0) return
+        val srmFile = File(internalSaveDir, "$romName.srm")
+        if (!srmFile.exists()) return
+        val bytes = srmFile.readBytes()
+        GBAEngine.nativeSetSram(bytes)
+    }
+
+    private fun saveSram() {
+        val size = GBAEngine.nativeGetSramSize()
+        if (size <= 0) return
+        val buf = ByteArray(size)
+        if (!GBAEngine.nativeGetSram(buf)) return
+        File(internalSaveDir, "$romName.srm").writeBytes(buf)
+    }
+
     private fun pushSaves() {
         val saveDir = internalSaveDir ?: return
         val fUriStr = folderUriStr
@@ -125,6 +144,7 @@ class GameActivity : Activity() {
         if (::gbaView.isInitialized) gbaView.pause()
         if (::audio.isInitialized) audio.stop()
         // Push save saat app di-minimize – core gpsp sudah flush .srm ke internalDir
+        saveSram()
         pushSaves()
     }
 
@@ -150,6 +170,7 @@ class GameActivity : Activity() {
         GBANotification.hide(this)
 
         // nativeCleanup → retro_unload_game → core flush save ke internalDir
+        saveSram()
         GBAEngine.nativeCleanup()
 
         // Push final SETELAH cleanup, supaya dapat save yang paling lengkap

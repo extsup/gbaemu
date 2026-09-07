@@ -56,6 +56,9 @@ static void (*p_retro_set_audio_sample)(retro_audio_sample_t);
 static void (*p_retro_set_audio_sample_batch)(retro_audio_sample_batch_t);
 static void (*p_retro_set_input_poll)(retro_input_poll_t);
 static void (*p_retro_set_input_state)(retro_input_state_t);
+static void*  (*p_retro_get_memory_data)(unsigned);
+static size_t (*p_retro_get_memory_size)(unsigned);
+#define RETRO_MEMORY_SAVE_RAM 0
 
 static uint32_t *framebuffer = NULL;
 static unsigned fb_width = 240, fb_height = 160;
@@ -163,6 +166,10 @@ Java_com_emu_gba_GBAEngine_nativeInit(JNIEnv *env, jobject obj, jstring soPath) 
     LOAD(retro_unload_game) LOAD(retro_set_environment) LOAD(retro_set_video_refresh)
     LOAD(retro_set_audio_sample) LOAD(retro_set_audio_sample_batch)
     LOAD(retro_set_input_poll) LOAD(retro_set_input_state)
+    p_retro_get_memory_data = dlsym(libhandle, "retro_get_memory_data");
+    p_retro_get_memory_size = dlsym(libhandle, "retro_get_memory_size");
+    if (!p_retro_get_memory_data || !p_retro_get_memory_size)
+        LOGE("retro_get_memory_data/size not found – SRAM save disabled");
 
     p_retro_set_environment(environment_cb);
     p_retro_set_video_refresh(video_refresh_cb);
@@ -214,6 +221,34 @@ Java_com_emu_gba_GBAEngine_nativeCleanup(JNIEnv *env, jobject obj) {
     if (p_retro_deinit) p_retro_deinit();
     if (framebuffer) { free(framebuffer); framebuffer = NULL; }
     if (libhandle) { dlclose(libhandle); libhandle = NULL; }
+}
+
+JNIEXPORT jint JNICALL
+Java_com_emu_gba_GBAEngine_nativeGetSramSize(JNIEnv *env, jobject obj) {
+    if (!p_retro_get_memory_size) return 0;
+    return (jint)p_retro_get_memory_size(RETRO_MEMORY_SAVE_RAM);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_emu_gba_GBAEngine_nativeGetSram(JNIEnv *env, jobject obj, jbyteArray buf) {
+    if (!p_retro_get_memory_data || !p_retro_get_memory_size) return JNI_FALSE;
+    size_t size = p_retro_get_memory_size(RETRO_MEMORY_SAVE_RAM);
+    void  *data = p_retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
+    if (!data || size == 0) return JNI_FALSE;
+    (*env)->SetByteArrayRegion(env, buf, 0, (jsize)size, (jbyte*)data);
+    return JNI_TRUE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_emu_gba_GBAEngine_nativeSetSram(JNIEnv *env, jobject obj, jbyteArray buf) {
+    if (!p_retro_get_memory_data || !p_retro_get_memory_size) return JNI_FALSE;
+    size_t size = p_retro_get_memory_size(RETRO_MEMORY_SAVE_RAM);
+    void  *data = p_retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
+    if (!data || size == 0) return JNI_FALSE;
+    jsize bufLen = (*env)->GetArrayLength(env, buf);
+    jsize copyLen = bufLen < (jsize)size ? bufLen : (jsize)size;
+    (*env)->GetByteArrayRegion(env, buf, 0, copyLen, (jbyte*)data);
+    return JNI_TRUE;
 }
 
 JNIEXPORT jint JNICALL
