@@ -49,6 +49,13 @@ class MainActivity : Activity() {
 
         File(DEFAULT_ROM_DIR).mkdirs()
 
+        // Kalau GameActivity masih jalan, jangan tampilkan list ROM
+        val prefs0 = getSharedPreferences("GBAemuPrefs", MODE_PRIVATE)
+        if (prefs0.getBoolean("game_running", false)) {
+            finish()
+            return
+        }
+
         findViewById<ImageButton>(R.id.btnPickFolder).setOnClickListener { pickFolder() }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {

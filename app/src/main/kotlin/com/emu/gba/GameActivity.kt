@@ -27,6 +27,9 @@ class GameActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        val gbaPrefs = getSharedPreferences("GBAemuPrefs", MODE_PRIVATE)
+        applyOrientation(gbaPrefs.getBoolean("landscape", false))
+
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
         applyImmersive()
@@ -85,6 +88,7 @@ class GameActivity : Activity() {
 
         GBANotification.show(this, romName)
         loadSram()
+        getSharedPreferences("GBAemuPrefs", MODE_PRIVATE).edit().putBoolean("game_running", true).apply()
 
         // ── 5. Setup views ────────────────────────────────────────────────────
         gbaView    = GBAView(this)
@@ -126,6 +130,38 @@ class GameActivity : Activity() {
         File(internalSaveDir, "$romName.srm").writeBytes(buf)
     }
 
+    private fun showSettingsMenu() {
+        val prefs = getSharedPreferences("GBAemuPrefs", MODE_PRIVATE)
+        val isLandscape = prefs.getBoolean("landscape", false)
+        val orientLabel = if (isLandscape) "Orientasi: Landscape ✓" else "Orientasi: Portrait ✓"
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Pengaturan")
+            .setItems(arrayOf(orientLabel)) { _, which ->
+                when (which) {
+                    0 -> {
+                        val newLandscape = !isLandscape
+                        prefs.edit().putBoolean("landscape", newLandscape).apply()
+                        applyOrientation(newLandscape)
+                    }
+                }
+                if (::gbaView.isInitialized) gbaView.resume()
+                if (::audio.isInitialized) audio.start()
+            }
+            .setOnCancelListener {
+                if (::gbaView.isInitialized) gbaView.resume()
+                if (::audio.isInitialized) audio.start()
+            }
+            .show()
+    }
+
+    private fun applyOrientation(landscape: Boolean) {
+        requestedOrientation = if (landscape)
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        else
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+    }
+
     private fun pushSaves() {
         val saveDir = internalSaveDir ?: return
         val fUriStr = folderUriStr
@@ -160,7 +196,27 @@ class GameActivity : Activity() {
     }
 
     override fun onBackPressed() {
-        moveTaskToBack(true)
+        if (::gbaView.isInitialized) gbaView.pause()
+        if (::audio.isInitialized) audio.stop()
+
+        val dialog = android.app.AlertDialog.Builder(this)
+            .setTitle("Menu")
+            .setItems(arrayOf("Pengaturan", "Keluar")) { _, which ->
+                when (which) {
+                    0 -> {
+                        showSettingsMenu()
+                    }
+                    1 -> {
+                        finish()
+                    }
+                }
+            }
+            .setOnCancelListener {
+                if (::gbaView.isInitialized) gbaView.resume()
+                if (::audio.isInitialized) audio.start()
+            }
+            .create()
+        dialog.show()
     }
 
     override fun onDestroy() {
@@ -175,6 +231,7 @@ class GameActivity : Activity() {
 
         // Push final SETELAH cleanup, supaya dapat save yang paling lengkap
         pushSaves()
+        getSharedPreferences("GBAemuPrefs", MODE_PRIVATE).edit().putBoolean("game_running", false).apply()
 
         // Hapus ROM temp dari cache (hanya ada kalau ROM dari SAF)
         tempRomFile?.delete()

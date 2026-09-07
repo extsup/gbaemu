@@ -3,6 +3,7 @@ package com.emu.gba
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Paint
 import android.graphics.Rect
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -91,7 +92,8 @@ class GBAView(context: Context) : SurfaceView(context), SurfaceHolder.Callback {
                     val top = (sh - dstH) / 2
                     it.drawColor(android.graphics.Color.BLACK)
                     val dst = Rect(left, top, left + dstW, top + dstH)
-                    it.drawBitmap(frameBitmap, null, dst, null)
+                    val paint = Paint().apply { isFilterBitmap = true }
+                    it.drawBitmap(frameBitmap, null, dst, paint)
                     holder.unlockCanvasAndPost(it)
                 }
 
