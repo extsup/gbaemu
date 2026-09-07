@@ -16,6 +16,7 @@ class GameActivity : Activity() {
     private lateinit var gbaView: GBAView
     private lateinit var controller: VirtualController
     private lateinit var audio: GBAAudio
+    private var tempRomFile: java.io.File? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -86,9 +87,6 @@ class GameActivity : Activity() {
     }
 
     private fun resolveRomPath(input: String): String? {
-        val romsDir = File(Environment.getExternalStorageDirectory(), "GBAemu/roms")
-        romsDir.mkdirs()
-
         if (!input.startsWith("content://")) {
             val file = File(input)
             if (file.exists() && file.canRead()) return file.absolutePath
@@ -98,15 +96,16 @@ class GameActivity : Activity() {
         return try {
             val uri = Uri.parse(input)
             val fileName = DocumentFile.fromSingleUri(this, uri)?.name ?: "rom.gba"
-            val destFile = File(romsDir, fileName)
-            if (!destFile.exists()) {
-                contentResolver.openInputStream(uri)?.use { input ->
-                    FileOutputStream(destFile).use { output ->
-                        input.copyTo(output)
-                    }
+            val temp = File(cacheDir, fileName)
+            contentResolver.openInputStream(uri)?.use { stream ->
+                FileOutputStream(temp).use { output ->
+                    stream.copyTo(output)
                 }
             }
-            if (destFile.exists()) destFile.absolutePath else null
+            if (temp.exists()) {
+                tempRomFile = temp
+                temp.absolutePath
+            } else null
         } catch (e: Exception) {
             e.printStackTrace()
             null
@@ -135,5 +134,7 @@ class GameActivity : Activity() {
         if (::audio.isInitialized) audio.release()
         GBANotification.hide(this)
         GBAEngine.nativeCleanup()
+        tempRomFile?.delete()
+        tempRomFile = null
     }
 }

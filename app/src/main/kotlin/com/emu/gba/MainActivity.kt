@@ -92,6 +92,7 @@ class MainActivity : Activity() {
             REQ_PICK_FOLDER -> {
                 if (resultCode == RESULT_OK && data != null) {
                     data.data?.let { uri ->
+                        contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         prefs.edit().putString(KEY_FOLDER_URI, uri.toString()).apply()
                         folderUri = uri
                         scanFolder(uri)
