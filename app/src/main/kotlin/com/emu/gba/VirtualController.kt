@@ -69,7 +69,7 @@ class VirtualController(context: Context) : View(context) {
     private fun initDefaultSizes(w: Int, h: Int) {
         if (w == 0 || h == 0) return
         val bw = w * 0.13f; val bh = h * 0.20f
-        val lbw = w * 0.30f; val lbh = h * 0.20f
+        val lbw = w * 0.18f; val lbh = h * 0.09f
         val sbw = w * 0.14f; val sbh = h * 0.10f
         for (name in BUTTON_NAMES) {
             btnW[name] = when (name) { "L","R" -> lbw; "SELECT","START" -> sbw; else -> bw }
@@ -93,7 +93,7 @@ class VirtualController(context: Context) : View(context) {
         return when (name) {
             "UP" -> h - bh * 2.5f - pad; "DOWN" -> h - bh * 0.5f - pad
             "LEFT","RIGHT" -> h - bh * 1.5f - pad; "A" -> h - bh * 1.5f - pad
-            "B" -> h - bh * 0.5f - pad; "L","R" -> pad + h * 0.15f
+            "B" -> h - bh * 0.5f - pad; "L","R" -> h * 0.58f
             "SELECT","START" -> h - h * 0.08f; else -> h / 2f
         }
     }
