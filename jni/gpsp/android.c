@@ -131,8 +131,8 @@ static int16_t input_state_cb(unsigned port, unsigned device, unsigned index, un
         case RETRO_DEVICE_ID_JOYPAD_LEFT:   return (input_state >> 5) & 1;
         case RETRO_DEVICE_ID_JOYPAD_UP:     return (input_state >> 6) & 1;
         case RETRO_DEVICE_ID_JOYPAD_DOWN:   return (input_state >> 7) & 1;
-        case RETRO_DEVICE_ID_JOYPAD_R:      return (input_state >> 8) & 1;
-        case RETRO_DEVICE_ID_JOYPAD_L:      return (input_state >> 9) & 1;
+        case RETRO_DEVICE_ID_JOYPAD_L:      return (input_state >> 8) & 1;
+        case RETRO_DEVICE_ID_JOYPAD_R:      return (input_state >> 9) & 1;
     }
     return 0;
 }

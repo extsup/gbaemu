@@ -96,14 +96,20 @@ class GameActivity : Activity() {
         audio      = GBAAudio()
         audio.start()
 
-        val root = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
+        val root = android.widget.FrameLayout(this).apply {
             setBackgroundColor(android.graphics.Color.BLACK)
         }
-        root.addView(gbaView, android.widget.LinearLayout.LayoutParams(
-            android.view.ViewGroup.LayoutParams.MATCH_PARENT, 0, 2f))
-        root.addView(controller, android.widget.LinearLayout.LayoutParams(
-            android.view.ViewGroup.LayoutParams.MATCH_PARENT, 0, 3f))
+
+        // GBAView: posisi dan ukuran dari prefs, default setengah layar atas
+        val gbaParams = android.widget.FrameLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT
+        )
+        root.addView(gbaView, gbaParams)
+        root.addView(controller, android.widget.FrameLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT
+        ))
         setContentView(root)
     }
 
@@ -128,6 +134,51 @@ class GameActivity : Activity() {
         val buf = ByteArray(size)
         if (!GBAEngine.nativeGetSram(buf)) return
         File(internalSaveDir, "$romName.srm").writeBytes(buf)
+    }
+
+    private fun startEditLayout() {
+        controller.editMode = true
+        controller.invalidate()
+
+        // Tampilkan toolbar edit di atas layar
+        val overlay = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            setBackgroundColor(0xCC000000.toInt())
+            setPadding(16, 16, 16, 16)
+            tag = "edit_overlay"
+        }
+        val btnDone = android.widget.Button(this).apply {
+            text = "✓ Selesai"
+            setOnClickListener { stopEditLayout() }
+        }
+        val btnReset = android.widget.Button(this).apply {
+            text = "↺ Reset"
+            setOnClickListener {
+                controller.resetPositions()
+            }
+        }
+        overlay.addView(btnDone, android.widget.LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        overlay.addView(btnReset, android.widget.LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
+        val root = findViewById<android.widget.FrameLayout>(android.R.id.content)
+            .getChildAt(0) as android.widget.FrameLayout
+        val params = android.widget.FrameLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+            android.view.Gravity.TOP
+        )
+        root.addView(overlay, params)
+    }
+
+    private fun stopEditLayout() {
+        controller.editMode = false
+        controller.invalidate()
+        val root = findViewById<android.widget.FrameLayout>(android.R.id.content)
+            .getChildAt(0) as android.widget.FrameLayout
+        val overlay = root.findViewWithTag<android.view.View>("edit_overlay")
+        overlay?.let { root.removeView(it) }
+        if (::gbaView.isInitialized) gbaView.resume()
+        if (::audio.isInitialized) audio.start()
     }
 
     private fun showSettingsMenu() {
@@ -176,8 +227,16 @@ class GameActivity : Activity() {
         }.start()
     }
 
+    override fun onStop() {
+        super.onStop()
+        // Jangan reset flag kalau hanya buka SettingsActivity
+        if (!isFinishing) return
+        getSharedPreferences("GBAemuPrefs", MODE_PRIVATE).edit().putBoolean("game_running", false).apply()
+    }
+
     override fun onResume() {
         super.onResume()
+        getSharedPreferences("GBAemuPrefs", MODE_PRIVATE).edit().putBoolean("game_running", true).apply()
         if (::gbaView.isInitialized) gbaView.resume()
         if (::audio.isInitialized) audio.start()
     }
@@ -193,12 +252,15 @@ class GameActivity : Activity() {
 
         val dialog = android.app.AlertDialog.Builder(this)
             .setTitle("Menu")
-            .setItems(arrayOf("Pengaturan", "Keluar")) { _, which ->
+            .setItems(arrayOf("Pengaturan", "Edit Layout", "Keluar")) { _, which ->
                 when (which) {
                     0 -> {
                         showSettingsMenu()
                     }
                     1 -> {
+                        startEditLayout()
+                    }
+                    2 -> {
                         finish()
                     }
                 }
@@ -223,7 +285,6 @@ class GameActivity : Activity() {
 
         // Push final SETELAH cleanup, supaya dapat save yang paling lengkap
         pushSaves()
-        getSharedPreferences("GBAemuPrefs", MODE_PRIVATE).edit().putBoolean("game_running", false).apply()
 
         // Hapus ROM temp dari cache (hanya ada kalau ROM dari SAF)
         tempRomFile?.delete()
