@@ -111,6 +111,7 @@ class GameActivity : Activity() {
             android.view.ViewGroup.LayoutParams.MATCH_PARENT
         ))
         setContentView(root)
+        controller.bringToFront()
     }
 
     // ── Save sync ─────────────────────────────────────────────────────────────
@@ -138,6 +139,7 @@ class GameActivity : Activity() {
 
     private fun startEditLayout() {
         controller.editMode = true
+        gbaView.editMode = true
         controller.invalidate()
 
         // Tampilkan toolbar edit di atas layar
@@ -172,6 +174,7 @@ class GameActivity : Activity() {
 
     private fun stopEditLayout() {
         controller.editMode = false
+        gbaView.editMode = false
         controller.invalidate()
         val root = findViewById<android.widget.FrameLayout>(android.R.id.content)
             .getChildAt(0) as android.widget.FrameLayout

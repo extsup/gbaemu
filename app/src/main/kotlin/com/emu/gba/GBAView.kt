@@ -3,6 +3,7 @@ package com.emu.gba
 import android.content.Context
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
+import android.view.MotionEvent
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -10,7 +11,16 @@ import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
 class GBAView(context: Context) : GLSurfaceView(context) {
+
     private val gbaRenderer = GBARenderer()
+
+    // Variabel untuk Drag / Custom Screen
+    private var initialX = 0f
+    private var initialY = 0f
+    private var initialLeft = 0
+    private var initialTop = 0
+    private var isDragging = false
+    var editMode = false // Aktifkan dari VirtualController
 
     init {
         setEGLContextClientVersion(2)
@@ -20,6 +30,38 @@ class GBAView(context: Context) : GLSurfaceView(context) {
 
     fun pause() { onPause() }
     fun resume() { onResume() }
+
+    // Fitur Custom Screen (Geser layar game saat mode edit)
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (!editMode) return super.onTouchEvent(event)
+
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                initialX = event.rawX
+                initialY = event.rawY
+                initialLeft = left
+                initialTop = top
+                isDragging = true
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (isDragging) {
+                    val dx = (event.rawX - initialX).toInt()
+                    val dy = (event.rawY - initialY).toInt()
+                    val params = layoutParams as android.widget.FrameLayout.LayoutParams
+                    params.leftMargin = initialLeft + dx
+                    params.topMargin = initialTop + dy
+                    layoutParams = params
+                }
+                return true
+            }
+            MotionEvent.ACTION_UP -> {
+                isDragging = false
+                return true
+            }
+        }
+        return super.onTouchEvent(event)
+    }
 
     private class GBARenderer : GLSurfaceView.Renderer {
         private val GBA_W = 240
@@ -79,8 +121,11 @@ class GBAView(context: Context) : GLSurfaceView(context) {
             GLES20.glGenTextures(1, texIds, 0)
             textureId = texIds[0]
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureId)
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_NEAREST)
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_NEAREST)
+
+            // 🔥 UBAH FILTER KE LINEAR (BILINEAR) AGAR GAMBAR HALUS
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
+
             GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
             GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
             GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, GBA_W, GBA_H, 0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null)
