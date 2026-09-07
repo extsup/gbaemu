@@ -3,9 +3,7 @@ package com.emu.gba
 import android.app.Activity
 import android.net.Uri
 import android.os.Bundle
-import android.os.Environment
 import android.view.WindowManager
-import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.documentfile.provider.DocumentFile
 import java.io.File
@@ -16,21 +14,21 @@ class GameActivity : Activity() {
     private lateinit var gbaView: GBAView
     private lateinit var controller: VirtualController
     private lateinit var audio: GBAAudio
-    private var tempRomFile: java.io.File? = null
+
+    // ROM cache sementara (hanya ada kalau ROM diakses via SAF content://)
+    private var tempRomFile: File? = null
+
+    // Save sync state – diisi di onCreate, dipakai di onPause & onDestroy
+    private var internalSaveDir: File? = null
+    private var folderUriStr: String? = null   // SAF tree URI (kalau ROM dari SAF)
+    private var romDir: File? = null           // Folder ROM (kalau ROM dari path biasa)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
-        window.decorView.systemUiVisibility = (
-            android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-            or android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
-            or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-            or android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-            or android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-            or android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-        )
+        applyImmersive()
 
         val romInput = intent.getStringExtra("rom_path") ?: run {
             Toast.makeText(this, "ROM tidak ditemukan!", Toast.LENGTH_SHORT).show()
@@ -38,84 +36,96 @@ class GameActivity : Activity() {
             return
         }
 
-        val saveDir = File(Environment.getExternalStorageDirectory(), "GBAemu/saves")
-        saveDir.mkdirs()
-        GBAEngine.nativeSetSaveDir(saveDir.absolutePath)
+        // folder_uri hanya ada kalau ROM dipilih lewat SAF folder picker
+        folderUriStr = intent.getStringExtra("folder_uri")
 
+        // ── 1. Resolve ROM ke path nyata di filesystem ────────────────────────
+        //    Harus dilakukan duluan supaya kita tahu romName sebelum set save dir.
+        val romPath = resolveRomPath(romInput) ?: run {
+            Toast.makeText(this, "Gagal mengakses ROM", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+
+        val romName       = romPath.substringAfterLast("/").substringBeforeLast(".")
+        val saveDir       = File(filesDir, "saves/$romName").also { it.mkdirs() }
+        internalSaveDir   = saveDir
+
+        // ── 2. Pull save yang sudah ada dari lokasi asal ke internal dir ──────
+        //    Dilakukan SEBELUM core load ROM, supaya file .srm sudah tersedia
+        //    di internalDir saat core mencarinya.
+        val fUriStr = folderUriStr
+        if (fUriStr != null) {
+            // ROM dari SAF – pull dari root SAF tree
+            SaveSyncer.pullFromSaf(this, Uri.parse(fUriStr), romName, saveDir)
+        } else {
+            // ROM dari path biasa – pull dari folder yang sama
+            val rDir = File(romPath).parentFile
+            romDir = rDir
+            if (rDir != null) SaveSyncer.pullFromDir(rDir, romName, saveDir)
+        }
+
+        // ── 3. Init core & set save dir ───────────────────────────────────────
         if (!GBAEngine.initCore(this)) {
             Toast.makeText(this, "Gagal load core!", Toast.LENGTH_SHORT).show()
             finish()
             return
         }
 
-        val romPath = resolveRomPath(romInput)
-        if (romPath == null) {
-            Toast.makeText(this, "Gagal mengakses ROM", Toast.LENGTH_SHORT).show()
-            finish()
-            return
-        }
+        // Native save dir = internalDir (pasti writable, tidak perlu SAF API)
+        GBAEngine.nativeSetSaveDir(saveDir.absolutePath)
 
+        // ── 4. Load ROM ───────────────────────────────────────────────────────
         if (!GBAEngine.nativeLoadRom(romPath)) {
             Toast.makeText(this, "Gagal load ROM!", Toast.LENGTH_SHORT).show()
             finish()
             return
         }
 
-        val romName = romPath.substringAfterLast("/").substringBeforeLast(".")
         GBANotification.show(this, romName)
 
-        gbaView = GBAView(this)
+        // ── 5. Setup views ────────────────────────────────────────────────────
+        gbaView    = GBAView(this)
         controller = VirtualController(this)
-        audio = GBAAudio()
+        audio      = GBAAudio()
         audio.start()
 
         val root = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             setBackgroundColor(android.graphics.Color.BLACK)
         }
-
-        val gameParams = android.widget.LinearLayout.LayoutParams(
-            android.view.ViewGroup.LayoutParams.MATCH_PARENT, 0, 2f
-        )
-        val ctrlParams = android.widget.LinearLayout.LayoutParams(
-            android.view.ViewGroup.LayoutParams.MATCH_PARENT, 0, 3f
-        )
-
-        root.addView(gbaView, gameParams)
-        root.addView(controller, ctrlParams)
+        root.addView(gbaView, android.widget.LinearLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT, 0, 2f))
+        root.addView(controller, android.widget.LinearLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT, 0, 3f))
         setContentView(root)
     }
 
-    private fun resolveRomPath(input: String): String? {
-        if (!input.startsWith("content://")) {
-            val file = File(input)
-            if (file.exists() && file.canRead()) return file.absolutePath
-            return null
-        }
+    // ── Save sync ─────────────────────────────────────────────────────────────
 
-        return try {
-            val uri = Uri.parse(input)
-            val fileName = DocumentFile.fromSingleUri(this, uri)?.name ?: "rom.gba"
-            val temp = File(cacheDir, fileName)
-            contentResolver.openInputStream(uri)?.use { stream ->
-                FileOutputStream(temp).use { output ->
-                    stream.copyTo(output)
-                }
-            }
-            if (temp.exists()) {
-                tempRomFile = temp
-                temp.absolutePath
-            } else null
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
+    /**
+     * Push save dari internal dir ke lokasi asal ROM.
+     * Dipanggil setelah emulator berhenti (onPause / setelah nativeCleanup).
+     */
+    private fun pushSaves() {
+        val saveDir = internalSaveDir ?: return
+        val fUriStr = folderUriStr
+        if (fUriStr != null) {
+            SaveSyncer.pushToSaf(this, Uri.parse(fUriStr), saveDir)
+        } else {
+            val rDir = romDir
+            if (rDir != null) SaveSyncer.pushToDir(rDir, saveDir)
         }
     }
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     override fun onPause() {
         super.onPause()
         if (::gbaView.isInitialized) gbaView.pause()
         if (::audio.isInitialized) audio.stop()
+        // Push save saat app di-minimize – core gpsp sudah flush .srm ke internalDir
+        pushSaves()
     }
 
     override fun onResume() {
@@ -126,18 +136,7 @@ class GameActivity : Activity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) hideSystemUI()
-    }
-
-    private fun hideSystemUI() {
-        window.decorView.systemUiVisibility = (
-            android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-            or android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
-            or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-            or android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-            or android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-            or android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-        )
+        if (hasFocus) applyImmersive()
     }
 
     override fun onBackPressed() {
@@ -149,8 +148,57 @@ class GameActivity : Activity() {
         if (::gbaView.isInitialized) gbaView.pause()
         if (::audio.isInitialized) audio.release()
         GBANotification.hide(this)
+
+        // nativeCleanup → retro_unload_game → core flush save ke internalDir
         GBAEngine.nativeCleanup()
+
+        // Push final SETELAH cleanup, supaya dapat save yang paling lengkap
+        pushSaves()
+
+        // Hapus ROM temp dari cache (hanya ada kalau ROM dari SAF)
         tempRomFile?.delete()
         tempRomFile = null
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /**
+     * Mengubah romInput (bisa content:// URI atau path biasa) jadi path
+     * filesystem yang bisa dibaca oleh native code.
+     *
+     * Kalau content:// → copy ke cacheDir dulu (native JNI tidak bisa baca URI).
+     * Kalau path biasa → langsung return kalau file ada & bisa dibaca.
+     */
+    private fun resolveRomPath(input: String): String? {
+        if (!input.startsWith("content://")) {
+            val file = File(input)
+            return if (file.exists() && file.canRead()) file.absolutePath else null
+        }
+        return try {
+            val uri      = Uri.parse(input)
+            val fileName = DocumentFile.fromSingleUri(this, uri)?.name ?: "rom.gba"
+            val temp     = File(cacheDir, fileName)
+            contentResolver.openInputStream(uri)?.use { stream ->
+                FileOutputStream(temp).use { out -> stream.copyTo(out) }
+            }
+            if (temp.exists()) {
+                tempRomFile = temp
+                temp.absolutePath
+            } else null
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    private fun applyImmersive() {
+        window.decorView.systemUiVisibility = (
+            android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            or android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
+            or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+            or android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+            or android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            or android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        )
     }
 }
