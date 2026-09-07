@@ -131,28 +131,19 @@ class GameActivity : Activity() {
     }
 
     private fun showSettingsMenu() {
-        val prefs = getSharedPreferences("GBAemuPrefs", MODE_PRIVATE)
-        val isLandscape = prefs.getBoolean("landscape", false)
-        val orientLabel = if (isLandscape) "Orientasi: Landscape ✓" else "Orientasi: Portrait ✓"
+        startActivityForResult(
+            android.content.Intent(this, SettingsActivity::class.java), 1001
+        )
+    }
 
-        android.app.AlertDialog.Builder(this)
-            .setTitle("Pengaturan")
-            .setItems(arrayOf(orientLabel)) { _, which ->
-                when (which) {
-                    0 -> {
-                        val newLandscape = !isLandscape
-                        prefs.edit().putBoolean("landscape", newLandscape).apply()
-                        applyOrientation(newLandscape)
-                    }
-                }
-                if (::gbaView.isInitialized) gbaView.resume()
-                if (::audio.isInitialized) audio.start()
-            }
-            .setOnCancelListener {
-                if (::gbaView.isInitialized) gbaView.resume()
-                if (::audio.isInitialized) audio.start()
-            }
-            .show()
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 1001) {
+            val prefs = getSharedPreferences("GBAemuPrefs", MODE_PRIVATE)
+            applyOrientation(prefs.getBoolean("landscape", false))
+            if (::gbaView.isInitialized) gbaView.resume()
+            if (::audio.isInitialized) audio.start()
+        }
     }
 
     private fun applyOrientation(landscape: Boolean) {
@@ -179,9 +170,10 @@ class GameActivity : Activity() {
         super.onPause()
         if (::gbaView.isInitialized) gbaView.pause()
         if (::audio.isInitialized) audio.stop()
-        // Push save saat app di-minimize – core gpsp sudah flush .srm ke internalDir
-        saveSram()
-        pushSaves()
+        Thread {
+            saveSram()
+            pushSaves()
+        }.start()
     }
 
     override fun onResume() {

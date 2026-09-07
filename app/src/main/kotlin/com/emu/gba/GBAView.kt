@@ -92,7 +92,8 @@ class GBAView(context: Context) : SurfaceView(context), SurfaceHolder.Callback {
                     val top = (sh - dstH) / 2
                     it.drawColor(android.graphics.Color.BLACK)
                     val dst = Rect(left, top, left + dstW, top + dstH)
-                    val paint = Paint().apply { isFilterBitmap = true }
+                    val prefs = context.getSharedPreferences("GBAemuPrefs", android.content.Context.MODE_PRIVATE)
+                    val paint = Paint().apply { isFilterBitmap = prefs.getBoolean("bilinear", true) }
                     it.drawBitmap(frameBitmap, null, dst, paint)
                     holder.unlockCanvasAndPost(it)
                 }
