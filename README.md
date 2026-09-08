@@ -3,7 +3,7 @@ Emulator GBA Android berbasis gpSP (libretro), ditulis dengan Kotlin.
 
 ## Cara Build via GitHub Ahctions
 1. Push repo ini ke GitHub
-2. GitHub Actions mengunduh core gpSP arm64 terbaru dari buildbot Libretro saat build.
+2. GitHub Actions mengunduh coreb gpSP arm64 terbaru dari buildbot Libretro saat build.
    File binary core **tidak disimpan di repository atau pull request**.
 3. GitHub Actions otomatis build APK setiap push ke `main`
 4. Download APK dari tab **Actions → Artifacts**
