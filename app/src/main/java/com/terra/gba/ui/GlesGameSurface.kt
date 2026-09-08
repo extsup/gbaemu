@@ -12,9 +12,13 @@ import javax.microedition.khronos.opengles.GL10
 
 /** A GL surface for the 240×160 GBA framebuffer; it never draws emulation pixels with Canvas. */
 class GlesGameSurface(context: Context) : GLSurfaceView(context) {
+    private val frameRenderer = FrameRenderer()
+
+    fun setLinearFiltering(enabled: Boolean) = queueEvent { frameRenderer.setLinearFiltering(enabled) }
+
     init {
         setEGLContextClientVersion(2)
-        setRenderer(FrameRenderer())
+        setRenderer(frameRenderer)
         renderMode = RENDERMODE_CONTINUOUSLY
     }
 }
@@ -22,6 +26,12 @@ class GlesGameSurface(context: Context) : GLSurfaceView(context) {
 private class FrameRenderer : GLSurfaceView.Renderer {
     private var program = 0
     private var texture = 0
+    @Volatile private var linearFiltering = false
+
+    fun setLinearFiltering(enabled: Boolean) {
+        linearFiltering = enabled
+        if (texture != 0) configureTextureFiltering()
+    }
     private val vertices: FloatBuffer = ByteBuffer.allocateDirect(16 * Float.SIZE_BYTES)
         .order(ByteOrder.nativeOrder())
         .asFloatBuffer()
@@ -39,10 +49,15 @@ private class FrameRenderer : GLSurfaceView.Renderer {
         program = createProgram(VERTEX_SHADER, FRAGMENT_SHADER)
         texture = IntArray(1).also { GLES20.glGenTextures(1, it, 0) }[0]
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_NEAREST)
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_NEAREST)
+        configureTextureFiltering()
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+    }
+
+    private fun configureTextureFiltering() {
+        val filter = if (linearFiltering) GLES20.GL_LINEAR else GLES20.GL_NEAREST
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, filter)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, filter)
     }
 
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {

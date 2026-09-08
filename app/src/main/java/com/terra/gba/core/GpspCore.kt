@@ -13,4 +13,7 @@ object GpspCore {
     external fun setButton(button: Int, pressed: Boolean)
     /** Runs one gPSP frame and exposes its RGB565 pixel buffer to the GL renderer. */
     external fun runFrame(): java.nio.ByteBuffer?
+    external fun saveState(): Boolean
+    external fun loadState(): Boolean
+    external fun stop()
 }
