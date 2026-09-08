@@ -1,0 +1,3 @@
+jni/gpsp/android.c
+jni/Android.mk
+jni/Application.mk

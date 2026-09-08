@@ -1,21 +1,39 @@
-# TerraGBA
+# GBAemu
+Emulator GBA Android berbasis gpSP (libretro), ditulis dengan Kotlin.
 
-A modern, landscape-first Android shell for the **gPSP** Game Boy Advance core, written in Kotlin.
+## Cara Build via GitHub Actions
+1. Push repo ini ke GitHub
+2. GitHub Actions mengunduh core gpSP arm64 terbaru dari buildbot Libretro saat build.
+   File binary core **tidak disimpan di repository atau pull request**.
+3. GitHub Actions otomatis build APK setiap push ke `main`
+4. Download APK dari tab **Actions → Artifacts**
 
-## Architecture
-- Kotlin + Material 3 Compose UI with an accessible virtual gamepad and optional physical-controller input.
-- `GlesGameSurface` owns the emulation surface. gPSP output is uploaded into an OpenGL ES texture; the display path is GPU-based, not a CPU `Bitmap`/`Canvas` blit.
-- `GpspCore` is the single Kotlin-to-native boundary. The native module is deliberately thin: it translates buttons and frame buffers and leaves emulation to upstream gPSP.
+## Core gpSP
+CI mengunduh `gpsp_libretro_android.so` dari buildbot Libretro dan mengemasnya ke APK
+sebagai `libgpsp_libretro.so`. Untuk build lokal, letakkan core tersebut di
+`app/src/main/jniLibs/arm64-v8a/libgpsp_libretro.so` (folder ini diabaikan Git).
 
-## Adding the gPSP core
-This repository does not redistribute gPSP. Put a compatible gPSP source checkout at `app/src/main/cpp/gpsp`, then wire its source files into `CMakeLists.txt`. The included JNI adapter documents the three callbacks it expects (`gpsp_load_rom`, `gpsp_run_frame`, `gpsp_set_button`). Review gPSP's license and ship its notices with your build.
+## ROM & BIOS
+- ROM `.gba` taruh di `/storage/emulated/0/GBAemu/roms/`
+- BIOS `gba_bios.bin` taruh di `/storage/emulated/0/GBAemu/`
 
-## Build
-```sh
-gradle :app:assembleDebug
+## Struktur Project
 ```
-
-Until gPSP is linked, the app shows a GPU checkerboard preview, so UI work can be tested independently.
-
-## Continuous integration
-GitHub Actions installs Gradle 8.10.2 and builds the debug APK on every push and pull request using JDK 17. Download the `terragba-debug-apk` artifact from the workflow run.
+GBAemu/
+├── .github/workflows/build.yml   # GitHub Actions
+├── app/src/main/
+│   ├── AndroidManifest.xml
+│   ├── kotlin/com/emu/gba/
+│   │   ├── GBAEngine.kt          # JNI bridge
+│   │   ├── GBAView.kt            # Render frame
+│   │   ├── GameActivity.kt       # Game screen
+│   │   ├── MainActivity.kt       # Pilih ROM
+│   │   └── VirtualController.kt  # Tombol virtual
+│   └── res/
+├── jni/
+│   ├── Android.mk
+│   ├── Application.mk
+│   └── gpsp/android.c            # Libretro wrapper
+├── build.gradle
+└── settings.gradle
+```

@@ -1,0 +1,4 @@
+
+.gradle/
+prebuilt/*.so
+app/src/main/jniLibs/
