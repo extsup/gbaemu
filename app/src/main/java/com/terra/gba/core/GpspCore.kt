@@ -9,6 +9,7 @@ object GpspCore {
     val available: Boolean by lazy {
         runCatching { System.loadLibrary("gpsp_jni") }.isSuccess
     }
+    external fun setSaveDirectory(path: String)
     external fun loadRom(path: String): Boolean
     external fun setButton(button: Int, pressed: Boolean)
     /** Runs one gPSP frame and exposes its RGB565 pixel buffer to the GL renderer. */
