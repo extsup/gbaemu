@@ -152,15 +152,15 @@ class VirtualController(context: Context) : View(context) {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
                 getButtonAt(event.getX(idx), event.getY(idx))?.let {
-                    pointerMap[pid] = it; pressedButtons.add(it); currentKeys = currentKeys or keyCode(it); GBAEngine.nativeSetInput(currentKeys)
+                    pointerMap[pid] = it; pressedButtons.add(it); GBAEngine.pressKey(keyCode(it))
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
-                pointerMap.remove(pid)?.let { pressedButtons.remove(it); currentKeys = currentKeys and keyCode(it).inv(); GBAEngine.nativeSetInput(currentKeys) }
+                pointerMap.remove(pid)?.let { pressedButtons.remove(it); GBAEngine.releaseKey(keyCode(it)) }
             }
             MotionEvent.ACTION_MOVE -> {}
             MotionEvent.ACTION_CANCEL -> {
-                currentKeys = 0; GBAEngine.nativeSetInput(0); pressedButtons.clear(); pointerMap.clear()
+                GBAEngine.resetKeys(); pressedButtons.clear(); pointerMap.clear()
             }
         }
         invalidate()
