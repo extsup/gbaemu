@@ -204,6 +204,7 @@ Java_com_emu_gba_GBAEngine_nativeRunFrame(JNIEnv *env, jobject obj) {
 JNIEXPORT void JNICALL
 Java_com_emu_gba_GBAEngine_nativeSetInput(JNIEnv *env, jobject obj, jint keys) {
     input_state = (uint32_t)keys;
+    if (keys != 0) LOGI("nativeSetInput: 0x%08X (R=%d L=%d A=%d B=%d)", keys, (keys>>8)&1, (keys>>9)&1, (keys>>0)&1, (keys>>1)&1);
 }
 
 JNIEXPORT jboolean JNICALL
