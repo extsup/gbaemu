@@ -1,0 +1,44 @@
+name: Build JNI Bridge
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+
+
+      - name: Install NDK
+        run: |
+          sdkmanager "ndk;25.2.9519653"
+
+
+      - name: Build JNI
+        working-directory: jni
+        run: |
+          export NDK=$ANDROID_SDK_ROOT/ndk/25.2.9519653
+
+          $NDK/ndk-build \
+            APP_ABI=armeabi-v7a \
+            APP_PLATFORM=android-16
+
+
+      - name: Check output
+        run: |
+          find . -name "*.so"
+
+
+      - name: Upload SO
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpsp-jni-so
+          path: |
+            libs/**/*.so
