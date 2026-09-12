@@ -125,13 +125,54 @@ static uint32_t rc_read_memory(uint32_t address, uint8_t* buffer,
     if (!get_mem_data_fn || !get_mem_size_fn) return 0;
     size_t sys_size = get_mem_size_fn(RETRO_MEMORY_SYSTEM_RAM);
     if (sys_size == 0) return 0;
-    if ((size_t)address + num_bytes > sys_size) {
-        /* Address di luar EWRAM — coba baca dari SAVE_RAM untuk area save */
-        return 0;
+
+    /* Log sekali: ukuran SYSTEM_RAM */
+    static int logged_size = 0;
+    if (!logged_size) {
+        logged_size = 1;
+        RCLOG("SYSTEM_RAM size = %zu bytes", sys_size);
     }
+
+    /* GBA memory map:
+       EWRAM: 0x02000000-0x0203FFFF (256 KB)
+       IWRAM: 0x03000000-0x03007FFF (32 KB)
+       
+       Core gpSP expose RAM dalam berbagai format. Kita coba deteksi. */
+
+    size_t offset = 0;
+    int valid = 0;
+
+    if (address >= 0x02000000 && address < 0x02040000) {
+        /* EWRAM */
+        offset = address - 0x02000000;
+        valid = 1;
+    } else if (address >= 0x03000000 && address < 0x03008000) {
+        /* IWRAM — biasanya digabung setelah EWRAM di core */
+        offset = 0x40000 + (address - 0x03000000);
+        valid = 1;
+    } else if (address < sys_size) {
+        /* Address relatif (0-based) */
+        offset = address;
+        valid = 1;
+    }
+
+    if (!valid || offset + num_bytes > sys_size) {
+        static int logged_oob = 0;
+        if (logged_oob < 10) {
+            logged_oob++;
+            RCLOG("read_memory INVALID: addr=0x%X len=%u sys_size=%zu",
+                address, num_bytes, sys_size);
+        }
+        memset(buffer, 0, num_bytes);
+        return num_bytes;
+    }
+
     void* ram = get_mem_data_fn(RETRO_MEMORY_SYSTEM_RAM);
-    if (!ram) return 0;
-    memcpy(buffer, (uint8_t*)ram + address, num_bytes);
+    if (!ram) {
+        memset(buffer, 0, num_bytes);
+        return num_bytes;
+    }
+    memcpy(buffer, (uint8_t*)ram + offset, num_bytes);
     return num_bytes;
 }
 
