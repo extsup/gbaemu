@@ -54,6 +54,7 @@ LOCAL_C_INCLUDES := \
 
 LOCAL_LDLIBS := -ldl -llog
 LOCAL_CFLAGS := -O2 -fvisibility=hidden -std=c99 \
-    -DRC_DISABLE_LUA=1
+    -DRC_DISABLE_LUA=1 \
+    -DRC_CLIENT_SUPPORTS_HASH=1
 
 include $(BUILD_SHARED_LIBRARY)
