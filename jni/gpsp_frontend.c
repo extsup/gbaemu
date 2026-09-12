@@ -9,6 +9,12 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include "../include/libretro.h"
+#include <android/log.h>
+#include "rcheevos/include/rc_client.h"
+#include "rcheevos/include/rc_consoles.h"
+
+#define RC_LOG_TAG "rcheevos"
+#define RCLOG(...) __android_log_print(ANDROID_LOG_INFO, RC_LOG_TAG, __VA_ARGS__)
 
 /* Typedef fallback (kalau libretro.h tidak mendefinisikan) */
 #ifndef RETRO_SERIALIZE_TYPEDEFS_DEFINED
@@ -33,6 +39,47 @@ static volatile int g_saving = 0;
 
 /* Flag: skip audio write saat paused (FF, menu, dll) */
 static volatile int g_audio_paused = 0;
+
+/* ============ RETROACHIEVEMENTS ============ */
+static rc_client_t* g_rc_client = NULL;
+
+/* Callback 1: baca RAM GBA */
+static uint32_t rc_read_memory(uint32_t address, uint8_t* buffer,
+                                uint32_t num_bytes, rc_client_t* client) {
+    (void)client;
+    if (!get_mem_data_fn || !get_mem_size_fn) return 0;
+    size_t sys_size = get_mem_size_fn(RETRO_MEMORY_SYSTEM_RAM);
+    if (sys_size == 0) return 0;
+    if ((size_t)address + num_bytes > sys_size) {
+        /* Address di luar EWRAM — coba baca dari SAVE_RAM untuk area save */
+        return 0;
+    }
+    void* ram = get_mem_data_fn(RETRO_MEMORY_SYSTEM_RAM);
+    if (!ram) return 0;
+    memcpy(buffer, (uint8_t*)ram + address, num_bytes);
+    return num_bytes;
+}
+
+/* Callback 2: HTTP — STUB untuk Sesi 2a (belum kirim ke Java) */
+static void rc_server_call(const rc_api_request_t* request,
+                            rc_client_server_callback_t callback,
+                            void* callback_data, rc_client_t* client) {
+    (void)request; (void)client;
+    RCLOG("server_call (stub): url=%s", request->url ? request->url : "(null)");
+    rc_api_server_response_t resp;
+    memset(&resp, 0, sizeof(resp));
+    resp.http_status_code = 503;  /* Service Unavailable — stub */
+    resp.body = "";
+    resp.body_length = 0;
+    callback(&resp, callback_data);
+}
+
+/* Callback 3: event handler */
+static void rc_event_handler(const rc_client_event_t* event, rc_client_t* client) {
+    (void)client;
+    if (!event) return;
+    RCLOG("event type=%d", event->type);
+}
 
 /* Save state function pointers (optional — core mungkin tidak punya) */
 static retro_serialize_size_t    g_serialize_size_fn;
@@ -360,6 +407,44 @@ JNIEXPORT void JNICALL Java_com_example_gpsp_NativeBridge_setAudioPaused(
         __sync_synchronize();
         audio_r = audio_w;
         __sync_synchronize();
+    }
+}
+
+/* ============ ACHIEVEMENTS JNI ============ */
+
+JNIEXPORT jboolean JNICALL Java_com_example_gpsp_NativeBridge_achievementsInit(
+    JNIEnv *e, jclass c)
+{
+    (void)e;(void)c;
+    if (g_rc_client) return JNI_TRUE;
+    g_rc_client = rc_client_create(rc_read_memory, rc_server_call);
+    if (!g_rc_client) {
+        RCLOG("rc_client_create failed");
+        return JNI_FALSE;
+    }
+    rc_client_set_event_handler(g_rc_client, rc_event_handler);
+    rc_client_set_hardcore_enabled(g_rc_client, 0);  /* softcore */
+    RCLOG("rc_client initialized");
+    return JNI_TRUE;
+}
+
+JNIEXPORT void JNICALL Java_com_example_gpsp_NativeBridge_achievementsDoFrame(
+    JNIEnv *e, jclass c)
+{
+    (void)e;(void)c;
+    if (g_rc_client && loaded) {
+        rc_client_do_frame(g_rc_client);
+    }
+}
+
+JNIEXPORT void JNICALL Java_com_example_gpsp_NativeBridge_achievementsShutdown(
+    JNIEnv *e, jclass c)
+{
+    (void)e;(void)c;
+    if (g_rc_client) {
+        rc_client_destroy(g_rc_client);
+        g_rc_client = NULL;
+        RCLOG("rc_client destroyed");
     }
 }
 

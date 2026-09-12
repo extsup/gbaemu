@@ -116,7 +116,12 @@ typedef void (*retro_reset_t)(void);
 typedef void *(*retro_get_memory_data_t)(unsigned id);
 typedef size_t (*retro_get_memory_size_t)(unsigned id);
 
-enum { RETRO_MEMORY_SAVE_RAM = 0 };
+enum retro_memory_type {
+   RETRO_MEMORY_SAVE_RAM   = 0,
+   RETRO_MEMORY_RTC        = 1,
+   RETRO_MEMORY_SYSTEM_RAM = 2,
+   RETRO_MEMORY_VIDEO_RAM  = 3
+};
 
 enum {
     RETRO_LOG_DEBUG = 0,

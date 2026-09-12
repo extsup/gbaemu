@@ -49,9 +49,10 @@ LOCAL_SRC_FILES += \
 
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/../include \
-    $(LOCAL_PATH)/rcheevos/include
+    $(LOCAL_PATH)/rcheevos/include \
+    $(LOCAL_PATH)/rcheevos/src
 
-LOCAL_LDLIBS := -ldl
+LOCAL_LDLIBS := -ldl -llog
 LOCAL_CFLAGS := -O2 -fvisibility=hidden -std=c99 \
     -DRC_DISABLE_LUA=1
 
