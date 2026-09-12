@@ -30,8 +30,13 @@ LOCAL_SRC_FILES += \
     rcheevos/src/rcheevos/runtime_progress.c \
     rcheevos/src/rcheevos/trigger.c \
     rcheevos/src/rcheevos/value.c \
+    rcheevos/src/rhash/aes.c \
+    rcheevos/src/rhash/cdreader.c \
     rcheevos/src/rhash/hash.c \
+    rcheevos/src/rhash/hash_disc.c \
+    rcheevos/src/rhash/hash_encrypted.c \
     rcheevos/src/rhash/hash_rom.c \
+    rcheevos/src/rhash/hash_zip.c \
     rcheevos/src/rhash/md5.c
 
 # === File yang di-EXCLUDE (tidak dipakai) ===
@@ -48,8 +53,6 @@ LOCAL_C_INCLUDES := \
 
 LOCAL_LDLIBS := -ldl
 LOCAL_CFLAGS := -O2 -fvisibility=hidden -std=c99 \
-    -DRC_DISABLE_LUA=1 \
-    -DRC_HASH_NO_ENCRYPTED=1 \
-    -DRC_HASH_NO_ZIP=1
+    -DRC_DISABLE_LUA=1
 
 include $(BUILD_SHARED_LIBRARY)
