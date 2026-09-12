@@ -84,6 +84,7 @@ static retro_get_memory_size_t get_mem_size_fn;
 
 /* ============ RETROACHIEVEMENTS ============ */
 static rc_client_t* g_rc_client = NULL;
+static volatile int g_rc_ready = 0;  /* 1 = game sudah di-identify, boleh do_frame */
 
 /* Java bindings — di-cache supaya tidak lookup tiap panggilan */
 static JavaVM* g_jvm = NULL;
@@ -515,7 +516,9 @@ JNIEXPORT void JNICALL Java_com_example_gpsp_NativeBridge_achievementsDoFrame(
     JNIEnv *e, jclass c)
 {
     (void)e;(void)c;
-    if (g_rc_client && loaded) {
+    /* Hanya jalan kalau game sudah di-identify (Sesi 2d ke atas).
+       Untuk sekarang g_rc_ready selalu 0, jadi langsung return. */
+    if (g_rc_ready && g_rc_client && loaded) {
         rc_client_do_frame(g_rc_client);
     }
 }
