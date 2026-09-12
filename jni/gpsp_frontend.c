@@ -558,4 +558,64 @@ JNIEXPORT void JNICALL Java_com_example_gpsp_NativeBridge_achievementsLogin(
     (*e)->ReleaseStringUTFChars(e, jtoken, token);
 }
 
+/* Callback identify game */
+static void rc_identify_callback(int result, const char* error,
+                                  rc_client_t* client, void* userdata) {
+    (void)userdata;
+    if (result != RC_OK) {
+        RCLOG("Identify failed: %d %s", result, error ? error : "(null)");
+        g_rc_ready = 0;
+        return;
+    }
+    const rc_client_game_t* game = rc_client_get_game_info(client);
+    if (game) {
+        RCLOG("Game identified: id=%u title=%s", game->id,
+              game->title ? game->title : "(null)");
+    } else {
+        RCLOG("Identify OK but game info null");
+    }
+
+    /* Log jumlah achievement */
+    rc_client_achievement_list_t* list = rc_client_create_achievement_list(
+        client,
+        RC_CLIENT_ACHIEVEMENT_CATEGORY_CORE,
+        RC_CLIENT_ACHIEVEMENT_LIST_GROUPING_PROGRESS);
+    if (list) {
+        int total = 0;
+        for (uint32_t i = 0; i < list->num_buckets; i++) {
+            total += list->buckets[i].num_achievements;
+        }
+        RCLOG("Achievements loaded: %d", total);
+        rc_client_destroy_achievement_list(list);
+    } else {
+        RCLOG("Achievement list null");
+    }
+
+    g_rc_ready = 1;
+}
+
+JNIEXPORT void JNICALL Java_com_example_gpsp_NativeBridge_achievementsLoadGame(
+    JNIEnv *e, jclass c, jstring jromPath)
+{
+    (void)c;
+    if (!g_rc_client) {
+        RCLOG("achievementsLoadGame: client not init");
+        return;
+    }
+    /* Unload game lama kalau ada */
+    if (g_rc_ready) {
+        rc_client_unload_game(g_rc_client);
+        g_rc_ready = 0;
+    }
+    const char* path = (*e)->GetStringUTFChars(e, jromPath, 0);
+    if (!path) return;
+    RCLOG("Identify game: %s", path);
+    rc_client_begin_identify_and_load_game(
+        g_rc_client,
+        RC_CONSOLE_GAMEBOY_ADVANCE,
+        path, NULL, 0,
+        rc_identify_callback, NULL);
+    (*e)->ReleaseStringUTFChars(e, jromPath, path);
+}
+
 jint JNI_OnLoad(JavaVM*vm,void*r){(void)r;g_jvm=vm;return JNI_VERSION_1_4;}
