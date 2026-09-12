@@ -31,6 +31,9 @@ static volatile uint16_t buttons;
 /* SAVE_OK_MARKER - flag agar save tidak concurrent */
 static volatile int g_saving = 0;
 
+/* Flag: skip audio write saat paused (FF, menu, dll) */
+static volatile int g_audio_paused = 0;
+
 /* Save state function pointers (optional — core mungkin tidak punya) */
 static retro_serialize_size_t    g_serialize_size_fn;
 static retro_serialize_t         g_serialize_fn;
@@ -75,7 +78,7 @@ static retro_get_memory_size_t get_mem_size_fn;
 static void seterr(const char *s){snprintf(errbuf,sizeof(errbuf),"%s",s?s:"unknown");}
 static void *getsym(const char *n){void *p=dlsym(core,n);if(!p){const char *e=dlerror();snprintf(errbuf,sizeof(errbuf),"%s: %s",n,e?e:"symbol not found");}return p;}
 static void video_cb(const void *data,unsigned w,unsigned h,size_t pitch){if(!data||w!=W||h!=H)return;for(unsigned y=0;y<H;y++)memcpy(frame_buf+y*W*2,(const uint8_t*)data+y*pitch,W*2);}
-static size_t audio_cb(const int16_t *data,size_t frames){if(!audio_ring)return frames;for(size_t i=0;i<frames;i++){unsigned n=(audio_w+1)%AUDIO_FRAMES;if(n==audio_r)break;audio_ring[audio_w*2]=data[i*2];audio_ring[audio_w*2+1]=data[i*2+1];__sync_synchronize();audio_w=n;}return frames;}
+static size_t audio_cb(const int16_t *data,size_t frames){if(!audio_ring)return frames;if(g_audio_paused)return frames;for(size_t i=0;i<frames;i++){unsigned n=(audio_w+1)%AUDIO_FRAMES;if(n==audio_r)break;audio_ring[audio_w*2]=data[i*2];audio_ring[audio_w*2+1]=data[i*2+1];__sync_synchronize();audio_w=n;}return frames;}
 static void poll_cb(void){}
 static int16_t state_cb(unsigned port,unsigned device,unsigned index,unsigned id){if(port||device!=RETRO_DEVICE_JOYPAD||index||id>11)return 0;return(buttons&(1u<<id))?1:0;}
 static bool env_cb(unsigned cmd,void *data){switch(cmd){case RETRO_ENVIRONMENT_GET_CAN_DUPE:if(data)*(bool*)data=true;return true;case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:return data&&*(const int*)data==RETRO_PIXEL_FORMAT_RGB565;case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:if(data)*(const char**)data=system_dir;return true;case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:if(data)*(const char**)data=save_dir;return true;case RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY:if(data)*(const char**)data=system_dir;return true;case RETRO_ENVIRONMENT_GET_VARIABLE:if(data){struct retro_variable*v=(struct retro_variable*)data;if(v->key&&strcmp(v->key,"gpsp_sound_rate")==0){v->value="65536";return true;}}return false;case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:if(data)*(bool*)data=false;return true;case RETRO_ENVIRONMENT_GET_MESSAGE_INTERFACE_VERSION:if(data)*(unsigned*)data=0;return true;case RETRO_ENVIRONMENT_SET_MESSAGE:return true;default:return false;}}
@@ -345,6 +348,19 @@ JNIEXPORT jint JNICALL Java_com_example_gpsp_NativeBridge_loadState(
     bool ok = g_unserialize_fn(buf, expect);
     free(buf);
     return ok ? 0 : -28;
+}
+
+JNIEXPORT void JNICALL Java_com_example_gpsp_NativeBridge_setAudioPaused(
+    JNIEnv *e, jclass c, jboolean paused)
+{
+    (void)e;(void)c;
+    g_audio_paused = paused ? 1 : 0;
+    if (!g_audio_paused) {
+        /* Resume: buang data lama di ring */
+        __sync_synchronize();
+        audio_r = audio_w;
+        __sync_synchronize();
+    }
 }
 
 jint JNI_OnLoad(JavaVM*vm,void*r){(void)vm;(void)r;return JNI_VERSION_1_4;}
