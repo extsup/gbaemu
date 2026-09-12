@@ -701,4 +701,58 @@ JNIEXPORT void JNICALL Java_com_example_gpsp_NativeBridge_achievementsLoadGame(
     (*e)->ReleaseStringUTFChars(e, jromPath, path);
 }
 
+JNIEXPORT jobjectArray JNICALL Java_com_example_gpsp_NativeBridge_achievementsGetUser(
+    JNIEnv *e, jclass c)
+{
+    (void)c;
+    if (!g_rc_client) return NULL;
+    const rc_client_user_t* user = rc_client_get_user_info(g_rc_client);
+    if (!user) return NULL;
+
+    jclass strCls = (*e)->FindClass(e, "java/lang/String");
+    if (!strCls) return NULL;
+
+    jobjectArray arr = (*e)->NewObjectArray(e, 4, strCls, NULL);
+    if (!arr) return NULL;
+
+    char score_buf[32], soft_buf[32];
+    snprintf(score_buf, sizeof(score_buf), "%u", user->score);
+    snprintf(soft_buf, sizeof(soft_buf), "%u", user->score_softcore);
+
+    (*e)->SetObjectArrayElement(e, arr, 0,
+        (*e)->NewStringUTF(e, user->display_name ? user->display_name : ""));
+    (*e)->SetObjectArrayElement(e, arr, 1,
+        (*e)->NewStringUTF(e, score_buf));
+    (*e)->SetObjectArrayElement(e, arr, 2,
+        (*e)->NewStringUTF(e, soft_buf));
+    (*e)->SetObjectArrayElement(e, arr, 3,
+        (*e)->NewStringUTF(e, user->avatar_url ? user->avatar_url : ""));
+
+    return arr;
+}
+
+JNIEXPORT void JNICALL Java_com_example_gpsp_NativeBridge_achievementsSetHardcore(
+    JNIEnv *e, jclass c, jboolean on)
+{
+    (void)e;(void)c;
+    if (g_rc_client) rc_client_set_hardcore_enabled(g_rc_client, on ? 1 : 0);
+    RCLOG("Set hardcore: %d", on ? 1 : 0);
+}
+
+JNIEXPORT void JNICALL Java_com_example_gpsp_NativeBridge_achievementsSetEncore(
+    JNIEnv *e, jclass c, jboolean on)
+{
+    (void)e;(void)c;
+    if (g_rc_client) rc_client_set_encore_mode_enabled(g_rc_client, on ? 1 : 0);
+    RCLOG("Set encore: %d", on ? 1 : 0);
+}
+
+JNIEXPORT void JNICALL Java_com_example_gpsp_NativeBridge_achievementsSetUnofficial(
+    JNIEnv *e, jclass c, jboolean on)
+{
+    (void)e;(void)c;
+    if (g_rc_client) rc_client_set_unofficial_enabled(g_rc_client, on ? 1 : 0);
+    RCLOG("Set unofficial: %d", on ? 1 : 0);
+}
+
 jint JNI_OnLoad(JavaVM*vm,void*r){(void)r;g_jvm=vm;return JNI_VERSION_1_4;}
