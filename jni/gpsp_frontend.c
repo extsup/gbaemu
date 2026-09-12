@@ -20,7 +20,7 @@ typedef bool   (*retro_unserialize_t)(const void *data, size_t size);
 #define W 240
 #define H 160
 #define FRAME_BYTES (W*H*2)
-#define AUDIO_FRAMES 8192
+#define AUDIO_FRAMES 4096
 static void *core;
 static char errbuf[512];
 static char system_dir[1024], save_dir[1024];
