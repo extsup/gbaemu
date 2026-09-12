@@ -85,6 +85,24 @@ static retro_get_memory_size_t get_mem_size_fn;
 /* ============ RETROACHIEVEMENTS ============ */
 static rc_client_t* g_rc_client = NULL;
 
+/* Java bindings — di-cache supaya tidak lookup tiap panggilan */
+static JavaVM* g_jvm = NULL;
+static jclass  g_ach_cls = NULL;
+static jmethodID g_http_sync_mid = NULL;
+
+static void cache_java_bindings(JNIEnv* env) {
+    if (g_ach_cls) return;
+    jclass cls = (*env)->FindClass(env, "com/example/gpsp/AchievementClient");
+    if (!cls) return;
+    g_ach_cls = (jclass)(*env)->NewGlobalRef(env, cls);
+    g_http_sync_mid = (*env)->GetStaticMethodID(env, cls, "httpRequestSync",
+        "(Ljava/lang/String;Ljava/lang/String;)[Ljava/lang/String;");
+    if (!g_http_sync_mid) {
+        __android_log_print(ANDROID_LOG_ERROR, "rcheevos",
+            "httpRequestSync methodID not found");
+    }
+}
+
 /* Callback 1: baca RAM GBA */
 static uint32_t rc_read_memory(uint32_t address, uint8_t* buffer,
                                 uint32_t num_bytes, rc_client_t* client) {
@@ -106,14 +124,78 @@ static uint32_t rc_read_memory(uint32_t address, uint8_t* buffer,
 static void rc_server_call(const rc_api_request_t* request,
                             rc_client_server_callback_t callback,
                             void* callback_data, rc_client_t* client) {
-    (void)request; (void)client;
-    RCLOG("server_call (stub): url=%s", request->url ? request->url : "(null)");
+    (void)client;
+
     rc_api_server_response_t resp;
     memset(&resp, 0, sizeof(resp));
-    resp.http_status_code = 503;  /* Service Unavailable — stub */
-    resp.body = "";
-    resp.body_length = 0;
+
+    if (!g_jvm || !g_ach_cls || !g_http_sync_mid) {
+        RCLOG("server_call: Java bindings not ready");
+        resp.http_status_code = RC_API_SERVER_RESPONSE_CLIENT_ERROR;
+        callback(&resp, callback_data);
+        return;
+    }
+
+    JNIEnv* env = NULL;
+    int env_status = (*g_jvm)->GetEnv(g_jvm, (void**)&env, JNI_VERSION_1_4);
+    int attached = 0;
+    if (env_status == JNI_EDETACHED) {
+        if ((*g_jvm)->AttachCurrentThread(g_jvm, &env, NULL) != 0) {
+            RCLOG("server_call: AttachCurrentThread failed");
+            resp.http_status_code = RC_API_SERVER_RESPONSE_CLIENT_ERROR;
+            callback(&resp, callback_data);
+            return;
+        }
+        attached = 1;
+    } else if (env_status != JNI_OK) {
+        RCLOG("server_call: GetEnv failed (%d)", env_status);
+        resp.http_status_code = RC_API_SERVER_RESPONSE_CLIENT_ERROR;
+        callback(&resp, callback_data);
+        return;
+    }
+
+    jstring jurl = (*env)->NewStringUTF(env, request->url ? request->url : "");
+    jstring jpost = (*env)->NewStringUTF(env, request->post_data ? request->post_data : "");
+
+    jobjectArray result = (jobjectArray)(*env)->CallStaticObjectMethod(
+        env, g_ach_cls, g_http_sync_mid, jurl, jpost);
+
+    int status_code = 0;
+    char* body = NULL;
+
+    if (result != NULL) {
+        jstring jstatus = (jstring)(*env)->GetObjectArrayElement(env, result, 0);
+        jstring jbody = (jstring)(*env)->GetObjectArrayElement(env, result, 1);
+
+        if (jstatus) {
+            const char* c = (*env)->GetStringUTFChars(env, jstatus, NULL);
+            if (c) { status_code = atoi(c); (*env)->ReleaseStringUTFChars(env, jstatus, c); }
+            (*env)->DeleteLocalRef(env, jstatus);
+        }
+        if (jbody) {
+            const char* c = (*env)->GetStringUTFChars(env, jbody, NULL);
+            if (c) { body = strdup(c); (*env)->ReleaseStringUTFChars(env, jbody, c); }
+            (*env)->DeleteLocalRef(env, jbody);
+        }
+        (*env)->DeleteLocalRef(env, result);
+    }
+
+    if (jurl) (*env)->DeleteLocalRef(env, jurl);
+    if (jpost) (*env)->DeleteLocalRef(env, jpost);
+
+    if (attached) (*g_jvm)->DetachCurrentThread(g_jvm);
+
+    if (status_code == 0) {
+        resp.http_status_code = RC_API_SERVER_RESPONSE_CLIENT_ERROR;
+    } else {
+        resp.http_status_code = status_code;
+        resp.body = body ? body : "";
+        resp.body_length = body ? strlen(body) : 0;
+    }
+
     callback(&resp, callback_data);
+
+    if (body) free(body);
 }
 
 /* Callback 3: event handler */
@@ -415,7 +497,8 @@ JNIEXPORT void JNICALL Java_com_example_gpsp_NativeBridge_setAudioPaused(
 JNIEXPORT jboolean JNICALL Java_com_example_gpsp_NativeBridge_achievementsInit(
     JNIEnv *e, jclass c)
 {
-    (void)e;(void)c;
+    (void)c;
+    cache_java_bindings(e);
     if (g_rc_client) return JNI_TRUE;
     g_rc_client = rc_client_create(rc_read_memory, rc_server_call);
     if (!g_rc_client) {
@@ -448,4 +531,25 @@ JNIEXPORT void JNICALL Java_com_example_gpsp_NativeBridge_achievementsShutdown(
     }
 }
 
-jint JNI_OnLoad(JavaVM*vm,void*r){(void)vm;(void)r;return JNI_VERSION_1_4;}
+JNIEXPORT void JNICALL Java_com_example_gpsp_NativeBridge_achievementsLogin(
+    JNIEnv *e, jclass c, jstring juser, jstring jtoken)
+{
+    (void)c;
+    if (!g_rc_client) {
+        RCLOG("achievementsLogin: client not init");
+        return;
+    }
+    const char* user = (*e)->GetStringUTFChars(e, juser, 0);
+    const char* token = (*e)->GetStringUTFChars(e, jtoken, 0);
+    if (!user || !token) {
+        if (user) (*e)->ReleaseStringUTFChars(e, juser, user);
+        if (token) (*e)->ReleaseStringUTFChars(e, jtoken, token);
+        return;
+    }
+    RCLOG("achievementsLogin: user=%s", user);
+    rc_client_begin_login_with_token(g_rc_client, user, token, NULL, NULL);
+    (*e)->ReleaseStringUTFChars(e, juser, user);
+    (*e)->ReleaseStringUTFChars(e, jtoken, token);
+}
+
+jint JNI_OnLoad(JavaVM*vm,void*r){(void)r;g_jvm=vm;return JNI_VERSION_1_4;}
