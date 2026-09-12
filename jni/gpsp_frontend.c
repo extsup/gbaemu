@@ -796,4 +796,13 @@ JNIEXPORT void JNICALL Java_com_example_gpsp_NativeBridge_achievementsSetUnoffic
     RCLOG("Set unofficial: %d", on ? 1 : 0);
 }
 
+JNIEXPORT jboolean JNICALL Java_com_example_gpsp_NativeBridge_achievementsIsLoggedIn(
+    JNIEnv *e, jclass c)
+{
+    (void)e;(void)c;
+    if (!g_rc_client) return JNI_FALSE;
+    const rc_client_user_t* u = rc_client_get_user_info(g_rc_client);
+    return (u != NULL) ? JNI_TRUE : JNI_FALSE;
+}
+
 jint JNI_OnLoad(JavaVM*vm,void*r){(void)r;g_jvm=vm;return JNI_VERSION_1_4;}
