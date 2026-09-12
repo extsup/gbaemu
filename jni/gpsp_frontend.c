@@ -90,6 +90,11 @@ static volatile int g_rc_ready = 0;  /* 1 = game sudah di-identify, boleh do_fra
 static JavaVM* g_jvm = NULL;
 static jclass  g_ach_cls = NULL;
 static jmethodID g_http_sync_mid = NULL;
+static jmethodID g_evt_triggered_mid = NULL;
+static jmethodID g_evt_progress_show_mid = NULL;
+static jmethodID g_evt_progress_hide_mid = NULL;
+static jmethodID g_evt_progress_update_mid = NULL;
+static jmethodID g_evt_game_completed_mid = NULL;
 
 static void cache_java_bindings(JNIEnv* env) {
     if (g_ach_cls) return;
@@ -102,6 +107,15 @@ static void cache_java_bindings(JNIEnv* env) {
         __android_log_print(ANDROID_LOG_ERROR, "rcheevos",
             "httpRequestSync methodID not found");
     }
+
+    g_evt_triggered_mid = (*env)->GetStaticMethodID(env, cls, "onAchievementTriggered",
+        "(Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;)V");
+    g_evt_progress_show_mid = (*env)->GetStaticMethodID(env, cls, "onProgressShow",
+        "(Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;)V");
+    g_evt_progress_hide_mid = (*env)->GetStaticMethodID(env, cls, "onProgressHide", "()V");
+    g_evt_progress_update_mid = (*env)->GetStaticMethodID(env, cls, "onProgressUpdate",
+        "(Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;)V");
+    g_evt_game_completed_mid = (*env)->GetStaticMethodID(env, cls, "onGameCompleted", "()V");
 }
 
 /* Callback 1: baca RAM GBA */
@@ -199,11 +213,80 @@ static void rc_server_call(const rc_api_request_t* request,
     if (body) free(body);
 }
 
-/* Callback 3: event handler */
+/* Callback 3: event handler — forward ke Java */
 static void rc_event_handler(const rc_client_event_t* event, rc_client_t* client) {
     (void)client;
     if (!event) return;
     RCLOG("event type=%d", event->type);
+
+    if (!g_jvm || !g_ach_cls) return;
+
+    JNIEnv* env = NULL;
+    int attached = 0;
+    int st = (*g_jvm)->GetEnv(g_jvm, (void**)&env, JNI_VERSION_1_4);
+    if (st == JNI_EDETACHED) {
+        if ((*g_jvm)->AttachCurrentThread(g_jvm, &env, NULL) != 0) return;
+        attached = 1;
+    } else if (st != JNI_OK) {
+        return;
+    }
+
+    const rc_client_achievement_t* ach = event->achievement;
+
+    switch (event->type) {
+        case RC_CLIENT_EVENT_ACHIEVEMENT_TRIGGERED:
+            if (ach && g_evt_triggered_mid) {
+                jstring t = (*env)->NewStringUTF(env, ach->title ? ach->title : "");
+                jstring d = (*env)->NewStringUTF(env, ach->description ? ach->description : "");
+                jstring b = (*env)->NewStringUTF(env, ach->badge_url ? ach->badge_url : "");
+                (*env)->CallStaticVoidMethod(env, g_ach_cls, g_evt_triggered_mid,
+                    t, d, (jint)ach->points, b);
+                if (t) (*env)->DeleteLocalRef(env, t);
+                if (d) (*env)->DeleteLocalRef(env, d);
+                if (b) (*env)->DeleteLocalRef(env, b);
+            }
+            break;
+
+        case RC_CLIENT_EVENT_ACHIEVEMENT_PROGRESS_INDICATOR_SHOW:
+            if (ach && g_evt_progress_show_mid) {
+                jstring t = (*env)->NewStringUTF(env, ach->title ? ach->title : "");
+                jstring p = (*env)->NewStringUTF(env, ach->measured_progress);
+                jstring b = (*env)->NewStringUTF(env, ach->badge_url ? ach->badge_url : "");
+                (*env)->CallStaticVoidMethod(env, g_ach_cls, g_evt_progress_show_mid,
+                    t, p, (jint)ach->points, b);
+                if (t) (*env)->DeleteLocalRef(env, t);
+                if (p) (*env)->DeleteLocalRef(env, p);
+                if (b) (*env)->DeleteLocalRef(env, b);
+            }
+            break;
+
+        case RC_CLIENT_EVENT_ACHIEVEMENT_PROGRESS_INDICATOR_HIDE:
+            if (g_evt_progress_hide_mid) {
+                (*env)->CallStaticVoidMethod(env, g_ach_cls, g_evt_progress_hide_mid);
+            }
+            break;
+
+        case RC_CLIENT_EVENT_ACHIEVEMENT_PROGRESS_INDICATOR_UPDATE:
+            if (ach && g_evt_progress_update_mid) {
+                jstring t = (*env)->NewStringUTF(env, ach->title ? ach->title : "");
+                jstring p = (*env)->NewStringUTF(env, ach->measured_progress);
+                jstring b = (*env)->NewStringUTF(env, ach->badge_url ? ach->badge_url : "");
+                (*env)->CallStaticVoidMethod(env, g_ach_cls, g_evt_progress_update_mid,
+                    t, p, (jint)ach->points, b);
+                if (t) (*env)->DeleteLocalRef(env, t);
+                if (p) (*env)->DeleteLocalRef(env, p);
+                if (b) (*env)->DeleteLocalRef(env, b);
+            }
+            break;
+
+        case RC_CLIENT_EVENT_GAME_COMPLETED:
+            if (g_evt_game_completed_mid) {
+                (*env)->CallStaticVoidMethod(env, g_ach_cls, g_evt_game_completed_mid);
+            }
+            break;
+    }
+
+    if (attached) (*g_jvm)->DetachCurrentThread(g_jvm);
 }
 static void seterr(const char *s){snprintf(errbuf,sizeof(errbuf),"%s",s?s:"unknown");}
 static void *getsym(const char *n){void *p=dlsym(core,n);if(!p){const char *e=dlerror();snprintf(errbuf,sizeof(errbuf),"%s: %s",n,e?e:"symbol not found");}return p;}
