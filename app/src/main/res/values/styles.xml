@@ -1,0 +1,1 @@
+<resources><style name="Theme.TerraGba" parent="android:style/Theme.Material.NoActionBar"><item name="android:fontFamily">sans</item><item name="android:windowFullscreen">true</item><item name="android:navigationBarColor">#05070E</item><item name="android:colorAccent">#B9FF65</item></style></resources>
