@@ -547,7 +547,10 @@ JNIEXPORT void JNICALL Java_com_example_gpsp_NativeBridge_achievementsLogin(
         return;
     }
     RCLOG("achievementsLogin: user=%s", user);
-    rc_client_begin_login_with_token(g_rc_client, user, token, NULL, NULL);
+    /* Pakai password (bukan token) — lebih praktis.
+       Kalau nanti mau pakai token, tinggal ganti ke:
+       rc_client_begin_login_with_token(g_rc_client, user, token, NULL, NULL); */
+    rc_client_begin_login_with_password(g_rc_client, user, token, NULL, NULL);
     (*e)->ReleaseStringUTFChars(e, juser, user);
     (*e)->ReleaseStringUTFChars(e, jtoken, token);
 }
