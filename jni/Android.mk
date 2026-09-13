@@ -37,10 +37,11 @@ LOCAL_SRC_FILES += \
     rcheevos/src/rhash/hash_encrypted.c \
     rcheevos/src/rhash/hash_rom.c \
     rcheevos/src/rhash/hash_zip.c \
-    rcheevos/src/rhash/md5.c
+    rcheevos/src/rhash/md5.c \
+    rcheevos/src/rc_libretro.c
 
 # === File yang di-EXCLUDE (tidak dipakai) ===
-# - rc_libretro.c         : butuh simbol core libretro (bukan frontend)
+# rc_libretro.c sudah dipakai untuk memory mapping GBA
 # - rc_client_external.c  : butuh external client framework
 # - rc_client_raintegration.c : Windows RetroArch integration
 # - rcheevos/rc_validate.c: dev validator

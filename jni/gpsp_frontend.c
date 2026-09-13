@@ -12,6 +12,7 @@
 #include <android/log.h>
 #include "rcheevos/include/rc_client.h"
 #include "rcheevos/include/rc_consoles.h"
+#include "rcheevos/src/rc_libretro.h"
 
 #define RC_LOG_TAG "rcheevos"
 #define RCLOG(...) __android_log_print(ANDROID_LOG_INFO, RC_LOG_TAG, __VA_ARGS__)
@@ -84,6 +85,8 @@ static retro_get_memory_size_t get_mem_size_fn;
 
 /* ============ RETROACHIEVEMENTS ============ */
 static rc_client_t* g_rc_client = NULL;
+static rc_libretro_memory_regions_t g_rc_memory = {0};
+static volatile int g_rc_memory_init = 0;
 static volatile int g_rc_ready = 0;  /* 1 = game sudah di-identify, boleh do_frame */
 
 /* Java bindings — di-cache supaya tidak lookup tiap panggilan */
@@ -118,61 +121,37 @@ static void cache_java_bindings(JNIEnv* env) {
     g_evt_game_completed_mid = (*env)->GetStaticMethodID(env, cls, "onGameCompleted", "()V");
 }
 
-/* Callback 1: baca RAM GBA */
+/* Callback untuk rc_libretro_memory_init */
+static void rc_get_core_memory_info(uint32_t id, rc_libretro_core_memory_info_t* info) {
+    if (!info) return;
+    if (!get_mem_data_fn || !get_mem_size_fn) {
+        info->data = NULL; info->size = 0; return;
+    }
+    info->data = (unsigned char*)get_mem_data_fn(id);
+    info->size = get_mem_size_fn(id);
+}
+
+/* Callback 1: baca RAM GBA via rc_libretro */
 static uint32_t rc_read_memory(uint32_t address, uint8_t* buffer,
                                 uint32_t num_bytes, rc_client_t* client) {
     (void)client;
-    if (!get_mem_data_fn || !get_mem_size_fn) return 0;
-    size_t sys_size = get_mem_size_fn(RETRO_MEMORY_SYSTEM_RAM);
-    if (sys_size == 0) return 0;
 
-    /* Log sekali: ukuran SYSTEM_RAM */
-    static int logged_size = 0;
-    if (!logged_size) {
-        logged_size = 1;
-        RCLOG("SYSTEM_RAM size = %zu bytes", sys_size);
+    /* Init memory regions sekali */
+    if (!g_rc_memory_init) {
+        rc_libretro_memory_init(&g_rc_memory, NULL,
+            rc_get_core_memory_info, RC_CONSOLE_GAMEBOY_ADVANCE);
+        g_rc_memory_init = 1;
+        RCLOG("rc_libretro_memory_init done, regions=%u", g_rc_memory.count);
     }
 
-    /* GBA memory map:
-       EWRAM: 0x02000000-0x0203FFFF (256 KB)
-       IWRAM: 0x03000000-0x03007FFF (32 KB)
-       
-       Core gpSP expose RAM dalam berbagai format. Kita coba deteksi. */
-
-    size_t offset = 0;
-    int valid = 0;
-
-    if (address >= 0x02000000 && address < 0x02040000) {
-        /* EWRAM */
-        offset = address - 0x02000000;
-        valid = 1;
-    } else if (address >= 0x03000000 && address < 0x03008000) {
-        /* IWRAM — biasanya digabung setelah EWRAM di core */
-        offset = 0x40000 + (address - 0x03000000);
-        valid = 1;
-    } else if (address < sys_size) {
-        /* Address relatif (0-based) */
-        offset = address;
-        valid = 1;
-    }
-
-    if (!valid || offset + num_bytes > sys_size) {
-        static int logged_oob = 0;
-        if (logged_oob < 100) {
-            logged_oob++;
-            RCLOG("read_memory INVALID #%d: addr=0x%X len=%u sys_size=%zu",
-                logged_oob, address, num_bytes, sys_size);
-        }
-        /* FIX v2 minimal: return 0 = gagal baca, jangan return data sampah */
+    uint32_t avail = 0;
+    uint8_t* ptr = rc_libretro_memory_find_avail(&g_rc_memory, address, &avail);
+    if (!ptr || avail == 0) {
+        memset(buffer, 0, num_bytes);
         return 0;
     }
-
-    void* ram = get_mem_data_fn(RETRO_MEMORY_SYSTEM_RAM);
-    if (!ram) {
-        memset(buffer, 0, num_bytes);
-        return num_bytes;
-    }
-    memcpy(buffer, (uint8_t*)ram + offset, num_bytes);
+    if (avail < num_bytes) num_bytes = avail;
+    memcpy(buffer, ptr, num_bytes);
     return num_bytes;
 }
 
@@ -276,6 +255,44 @@ static void rc_event_handler(const rc_client_event_t* event, rc_client_t* client
 
     switch (event->type) {
         case RC_CLIENT_EVENT_ACHIEVEMENT_TRIGGERED:
+            if (ach) {
+                RCLOG("TRIGGERED: id=%u title=%s addr_check=TODO", ach->id, ach->title ? ach->title : "?");
+                /* Dump RAM snapshot di sekitar alamat kritis */
+                if (get_mem_data_fn && get_mem_size_fn) {
+                    size_t sz = get_mem_size_fn(RETRO_MEMORY_SYSTEM_RAM);
+                    void* ram = get_mem_data_fn(RETRO_MEMORY_SYSTEM_RAM);
+                    if (ram && sz >= 4) {
+                        /* Log 16 byte pertama dan terakhir RAM */
+                        uint8_t* r = (uint8_t*)ram;
+                        RCLOG("RAM[0..3]=%02X %02X %02X %02X size=%zu",
+                            r[0],r[1],r[2],r[3], sz);
+                        if (sz >= 0x10)
+                            RCLOG("RAM[0x10..0x13]=%02X %02X %02X %02X",
+                                r[0x10],r[0x11],r[0x12],r[0x13]);
+                        /* Tulis ke file */
+                        if (save_dir[0]) {
+                            char dp[1200];
+                            snprintf(dp, sizeof(dp), "/storage/emulated/0/GBAemu/roms/save/ach_trigger_%u.txt", ach->id);
+                            FILE* f2 = fopen(dp, "w");
+                            if (f2) {
+                                fprintf(f2, "id=%u title=%s\n", ach->id, ach->title ? ach->title : "?");
+                                fprintf(f2, "RAM size=%zu\n", sz);
+                                fprintf(f2, "RAM[0..15]=");
+                                size_t dump = sz < 16 ? sz : 16;
+                                for (size_t i=0;i<dump;i++) fprintf(f2,"%02X ",r[i]);
+                                fprintf(f2,"\n");
+                                /* Dump 16 byte di offset EWRAM awal */
+                                if (sz > 0x10) {
+                                    fprintf(f2,"RAM[0x02000000 offset 0..15]=");
+                                    for (size_t i=0;i<16&&i<sz;i++) fprintf(f2,"%02X ",r[i]);
+                                    fprintf(f2,"\n");
+                                }
+                                fclose(f2);
+                            }
+                        }
+                    }
+                }
+            }
             if (ach && g_evt_triggered_mid) {
                 jstring t = (*env)->NewStringUTF(env, ach->title ? ach->title : "");
                 jstring d = (*env)->NewStringUTF(env, ach->description ? ach->description : "");
@@ -632,6 +649,7 @@ JNIEXPORT jboolean JNICALL Java_com_example_gpsp_NativeBridge_achievementsInit(
     }
     rc_client_set_event_handler(g_rc_client, rc_event_handler);
     rc_client_set_hardcore_enabled(g_rc_client, 0);  /* softcore */
+    rc_client_set_user_agent_prefix(g_rc_client, "gpSP-Android/1.0");
     RCLOG("rc_client initialized");
     return JNI_TRUE;
 }
@@ -715,6 +733,8 @@ static void rc_identify_callback(int result, const char* error,
         RCLOG("Achievement list null");
     }
 
+    /* Reset hit counts supaya achievement tidak trigger dari kondisi save state lama */
+    rc_client_reset(client);
     g_rc_ready = 1;
 }
 
