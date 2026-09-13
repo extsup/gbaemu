@@ -121,54 +121,45 @@ static void cache_java_bindings(JNIEnv* env) {
     g_evt_game_completed_mid = (*env)->GetStaticMethodID(env, cls, "onGameCompleted", "()V");
 }
 
-/* Callback untuk rc_libretro_memory_init */
-static void rc_get_core_memory_info(uint32_t id, rc_libretro_core_memory_info_t* info) {
-    if (!info) return;
-    if (!get_mem_data_fn || !get_mem_size_fn) {
-        info->data = NULL; info->size = 0; return;
-    }
-    info->data = (unsigned char*)get_mem_data_fn(id);
-    info->size = get_mem_size_fn(id);
-}
-
-/* Callback 1: baca RAM GBA via rc_libretro */
+/* Callback 1: baca RAM GBA */
 static uint32_t rc_read_memory(uint32_t address, uint8_t* buffer,
                                 uint32_t num_bytes, rc_client_t* client) {
     (void)client;
+    if (!get_mem_data_fn || !get_mem_size_fn) return 0;
+    size_t sys_size = get_mem_size_fn(RETRO_MEMORY_SYSTEM_RAM);
+    if (sys_size == 0) return 0;
 
-    /* Init memory regions sekali */
-    if (!g_rc_memory_init) {
-        rc_libretro_memory_init(&g_rc_memory, NULL,
-            rc_get_core_memory_info, RC_CONSOLE_GAMEBOY_ADVANCE);
-        g_rc_memory_init = 1;
-        RCLOG("rc_libretro_memory_init done, regions=%u", g_rc_memory.count);
+    static int logged_size = 0;
+    if (!logged_size) {
+        logged_size = 1;
+        RCLOG("SYSTEM_RAM size = %zu bytes", sys_size);
     }
 
-    uint32_t avail = 0;
-    uint8_t* ptr = rc_libretro_memory_find_avail(&g_rc_memory, address, &avail);
-    if (!ptr || avail == 0) {
+    /* rcheevos GBA kirim address 0-based (EWRAM offset langsung) */
+    size_t offset = 0;
+    int valid = 0;
+
+    if (address >= 0x02000000 && address < 0x02040000) {
+        /* Address absolut EWRAM */
+        offset = address - 0x02000000;
+        valid = 1;
+    } else if (address < 0x40000) {
+        /* Address relatif 0-based — EWRAM offset langsung */
+        offset = address;
+        valid = 1;
+    }
+
+    if (!valid || offset + num_bytes > sys_size) {
         memset(buffer, 0, num_bytes);
         return 0;
     }
-    if (avail < num_bytes) num_bytes = avail;
-    memcpy(buffer, ptr, num_bytes);
 
-    /* Log alamat unik yang dibaca */
-    static uint32_t logged_addrs[256];
-    static int logged_count = 0;
-    int already = 0;
-    for (int i = 0; i < logged_count && i < 256; i++) {
-        if (logged_addrs[i] == address) { already = 1; break; }
+    void* ram = get_mem_data_fn(RETRO_MEMORY_SYSTEM_RAM);
+    if (!ram) {
+        memset(buffer, 0, num_bytes);
+        return 0;
     }
-    if (!already && logged_count < 256) {
-        logged_addrs[logged_count++] = address;
-        RCLOG("read addr=0x%08X val=0x%02X%02X%02X%02X",
-            address, buffer[0],
-            num_bytes>1?buffer[1]:0,
-            num_bytes>2?buffer[2]:0,
-            num_bytes>3?buffer[3]:0);
-    }
-
+    memcpy(buffer, (uint8_t*)ram + offset, num_bytes);
     return num_bytes;
 }
 
