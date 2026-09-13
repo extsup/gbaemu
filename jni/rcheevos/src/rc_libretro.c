@@ -6,7 +6,7 @@
  * integrating with any other frontends.
  */
 
-#include "../../include/libretro.h"
+#include "../../../include/libretro.h"
 #include "rc_libretro.h"
 
 #include "rc_consoles.h"
