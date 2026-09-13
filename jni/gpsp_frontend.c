@@ -152,6 +152,23 @@ static uint32_t rc_read_memory(uint32_t address, uint8_t* buffer,
     }
     if (avail < num_bytes) num_bytes = avail;
     memcpy(buffer, ptr, num_bytes);
+
+    /* Log alamat unik yang dibaca */
+    static uint32_t logged_addrs[256];
+    static int logged_count = 0;
+    int already = 0;
+    for (int i = 0; i < logged_count && i < 256; i++) {
+        if (logged_addrs[i] == address) { already = 1; break; }
+    }
+    if (!already && logged_count < 256) {
+        logged_addrs[logged_count++] = address;
+        RCLOG("read addr=0x%08X val=0x%02X%02X%02X%02X",
+            address, buffer[0],
+            num_bytes>1?buffer[1]:0,
+            num_bytes>2?buffer[2]:0,
+            num_bytes>3?buffer[3]:0);
+    }
+
     return num_bytes;
 }
 
