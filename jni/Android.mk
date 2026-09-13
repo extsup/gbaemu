@@ -53,6 +53,9 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/rcheevos/include \
     $(LOCAL_PATH)/rcheevos/src
 
+# rc_libretro.c butuh libretro.h untuk struct retro_memory_map
+LOCAL_CFLAGS += -include $(LOCAL_PATH)/../include/libretro.h
+
 LOCAL_LDLIBS := -ldl -llog
 LOCAL_CFLAGS := -O2 -fvisibility=hidden -std=c99 \
     -DRC_DISABLE_LUA=1 \
