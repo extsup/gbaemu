@@ -649,7 +649,6 @@ JNIEXPORT jboolean JNICALL Java_com_example_gpsp_NativeBridge_achievementsInit(
     }
     rc_client_set_event_handler(g_rc_client, rc_event_handler);
     rc_client_set_hardcore_enabled(g_rc_client, 0);  /* softcore */
-    rc_client_set_user_agent_prefix(g_rc_client, "gpSP-Android/1.0");
     RCLOG("rc_client initialized");
     return JNI_TRUE;
 }
