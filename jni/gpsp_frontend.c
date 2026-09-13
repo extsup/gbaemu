@@ -163,9 +163,8 @@ static uint32_t rc_read_memory(uint32_t address, uint8_t* buffer,
             RCLOG("read_memory INVALID #%d: addr=0x%X len=%u sys_size=%zu",
                 logged_oob, address, num_bytes, sys_size);
         }
-        /* 0xFF for OOB — lebih netral dari 0 untuk achievement check */
-        memset(buffer, 0xFF, num_bytes);
-        return num_bytes;
+        /* FIX v2 minimal: return 0 = gagal baca, jangan return data sampah */
+        return 0;
     }
 
     void* ram = get_mem_data_fn(RETRO_MEMORY_SYSTEM_RAM);
