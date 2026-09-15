@@ -123,7 +123,7 @@ static void cache_java_bindings(JNIEnv* env) {
 
 /* Callback 1: baca RAM GBA (EWRAM + IWRAM via SET_MEMORY_MAPS) */
 /* libretro.h versi slim tidak punya constant ini */
-#define RETRO_ENVIRONMENT_SET_MEMORY_MAPS (36 | 0x80000000)
+#define RETRO_ENVIRONMENT_SET_MEMORY_MAPS (36 | 0x10000)  /* EXPERIMENTAL */
 
 /* ==== Memory descriptor map dari core (SET_MEMORY_MAPS) ==== */
 #define MAX_MEM_REGIONS 8
