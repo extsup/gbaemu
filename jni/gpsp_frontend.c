@@ -165,6 +165,20 @@ static uint32_t rc_read_memory(uint32_t address, uint8_t* buffer,
         }
     }
 
+    /* DEBUG: log address tidak ter-handle */
+    {
+        static uint32_t logged[64];
+        static int log_count = 0;
+        int already = 0;
+        for (int j = 0; j < log_count; j++) {
+            if (logged[j] == address) { already = 1; break; }
+        }
+        if (!already && log_count < 64) {
+            logged[log_count++] = address;
+            RCLOG("UNHANDLED addr=0x%08X size=%u", address, num_bytes);
+        }
+    }
+
     memset(buffer, 0, num_bytes);
     return 0;
 }
