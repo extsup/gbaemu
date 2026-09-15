@@ -121,46 +121,49 @@ static void cache_java_bindings(JNIEnv* env) {
     g_evt_game_completed_mid = (*env)->GetStaticMethodID(env, cls, "onGameCompleted", "()V");
 }
 
-/* Callback 1: baca RAM GBA */
+/* Callback 1: baca RAM GBA (EWRAM + IWRAM via SET_MEMORY_MAPS) */
+/* ==== Memory descriptor map dari core (SET_MEMORY_MAPS) ==== */
+#define MAX_MEM_REGIONS 8
+typedef struct {
+    uint8_t* ptr;
+    size_t   offset;
+    size_t   start;
+    size_t   len;
+} mem_region_t;
+
+static mem_region_t g_mem_regions[MAX_MEM_REGIONS];
+static int g_mem_region_count = 0;
+
 static uint32_t rc_read_memory(uint32_t address, uint8_t* buffer,
                                 uint32_t num_bytes, rc_client_t* client) {
     (void)client;
-    if (!get_mem_data_fn || !get_mem_size_fn) return 0;
-    size_t sys_size = get_mem_size_fn(RETRO_MEMORY_SYSTEM_RAM);
-    if (sys_size == 0) return 0;
 
-    static int logged_size = 0;
-    if (!logged_size) {
-        logged_size = 1;
-        RCLOG("SYSTEM_RAM size = %zu bytes", sys_size);
+    for (int i = 0; i < g_mem_region_count; i++) {
+        size_t start = g_mem_regions[i].start;
+        size_t len   = g_mem_regions[i].len;
+        if ((size_t)address >= start &&
+            (size_t)address + num_bytes <= start + len) {
+            size_t rel = (size_t)address - start;
+            memcpy(buffer,
+                   g_mem_regions[i].ptr + g_mem_regions[i].offset + rel,
+                   num_bytes);
+            return num_bytes;
+        }
     }
 
-    /* rcheevos GBA kirim address 0-based (EWRAM offset langsung) */
-    size_t offset = 0;
-    int valid = 0;
-
-    if (address >= 0x02000000 && address < 0x02040000) {
-        /* Address absolut EWRAM */
-        offset = address - 0x02000000;
-        valid = 1;
-    } else if (address < 0x40000) {
-        /* Address relatif 0-based — EWRAM offset langsung */
-        offset = address;
-        valid = 1;
+    if (get_mem_data_fn && get_mem_size_fn &&
+        address >= 0x02000000 && address < 0x02040000) {
+        size_t sys_size = get_mem_size_fn(RETRO_MEMORY_SYSTEM_RAM);
+        void* ram = get_mem_data_fn(RETRO_MEMORY_SYSTEM_RAM);
+        size_t off = address - 0x02000000;
+        if (ram && off + num_bytes <= sys_size) {
+            memcpy(buffer, (uint8_t*)ram + off, num_bytes);
+            return num_bytes;
+        }
     }
 
-    if (!valid || offset + num_bytes > sys_size) {
-        memset(buffer, 0, num_bytes);
-        return 0;
-    }
-
-    void* ram = get_mem_data_fn(RETRO_MEMORY_SYSTEM_RAM);
-    if (!ram) {
-        memset(buffer, 0, num_bytes);
-        return 0;
-    }
-    memcpy(buffer, (uint8_t*)ram + offset, num_bytes);
-    return num_bytes;
+    memset(buffer, 0, num_bytes);
+    return 0;
 }
 
 /* Callback 2: HTTP — STUB untuk Sesi 2a (belum kirim ke Java) */
@@ -360,7 +363,65 @@ static void video_cb(const void *data,unsigned w,unsigned h,size_t pitch){if(!da
 static size_t audio_cb(const int16_t *data,size_t frames){if(!audio_ring)return frames;if(g_audio_paused)return frames;for(size_t i=0;i<frames;i++){unsigned n=(audio_w+1)%AUDIO_FRAMES;if(n==audio_r)break;audio_ring[audio_w*2]=data[i*2];audio_ring[audio_w*2+1]=data[i*2+1];__sync_synchronize();audio_w=n;}return frames;}
 static void poll_cb(void){}
 static int16_t state_cb(unsigned port,unsigned device,unsigned index,unsigned id){if(port||device!=RETRO_DEVICE_JOYPAD||index||id>11)return 0;return(buttons&(1u<<id))?1:0;}
-static bool env_cb(unsigned cmd,void *data){switch(cmd){case RETRO_ENVIRONMENT_GET_CAN_DUPE:if(data)*(bool*)data=true;return true;case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:return data&&*(const int*)data==RETRO_PIXEL_FORMAT_RGB565;case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:if(data)*(const char**)data=system_dir;return true;case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:if(data)*(const char**)data=save_dir;return true;case RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY:if(data)*(const char**)data=system_dir;return true;case RETRO_ENVIRONMENT_GET_VARIABLE:if(data){struct retro_variable*v=(struct retro_variable*)data;if(v->key&&strcmp(v->key,"gpsp_sound_rate")==0){v->value="65536";return true;}}return false;case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:if(data)*(bool*)data=false;return true;case RETRO_ENVIRONMENT_GET_MESSAGE_INTERFACE_VERSION:if(data)*(unsigned*)data=0;return true;case RETRO_ENVIRONMENT_SET_MESSAGE:return true;default:return false;}}
+static bool env_cb(unsigned cmd, void *data){
+    switch (cmd) {
+    case RETRO_ENVIRONMENT_GET_CAN_DUPE:
+        if (data) *(bool*)data = true;
+        return true;
+    case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
+        return data && *(const int*)data == RETRO_PIXEL_FORMAT_RGB565;
+    case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
+        if (data) *(const char**)data = system_dir;
+        return true;
+    case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
+        if (data) *(const char**)data = save_dir;
+        return true;
+    case RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY:
+        if (data) *(const char**)data = system_dir;
+        return true;
+    case RETRO_ENVIRONMENT_GET_VARIABLE:
+        if (data) {
+            struct retro_variable *v = (struct retro_variable*)data;
+            if (v->key && strcmp(v->key, "gpsp_sound_rate") == 0) {
+                v->value = "65536";
+                return true;
+            }
+        }
+        return false;
+    case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
+        if (data) *(bool*)data = false;
+        return true;
+    case RETRO_ENVIRONMENT_GET_MESSAGE_INTERFACE_VERSION:
+        if (data) *(unsigned*)data = 0;
+        return true;
+    case RETRO_ENVIRONMENT_SET_MESSAGE:
+        return true;
+    case RETRO_ENVIRONMENT_SET_MEMORY_MAPS: {
+        const struct retro_memory_map *map =
+            (const struct retro_memory_map*)data;
+        if (!map) return false;
+        g_mem_region_count = 0;
+        for (unsigned i = 0; i < map->num_descriptors
+                          && g_mem_region_count < MAX_MEM_REGIONS; i++) {
+            const struct retro_memory_descriptor *d =
+                &map->descriptors[i];
+            if (!d->ptr || d->len == 0) continue;
+            g_mem_regions[g_mem_region_count].ptr    = (uint8_t*)d->ptr;
+            g_mem_regions[g_mem_region_count].offset = d->offset;
+            g_mem_regions[g_mem_region_count].start  = d->start;
+            g_mem_regions[g_mem_region_count].len    = d->len;
+            g_mem_region_count++;
+            RCLOG("MEM DESC: start=0x%08zX len=0x%zX off=0x%zX ptr=%p",
+                  (size_t)d->start, (size_t)d->len,
+                  (size_t)d->offset, d->ptr);
+        }
+        RCLOG("Total mem regions: %d", g_mem_region_count);
+        return true;
+    }
+    default:
+        return false;
+    }
+}
 static int resolve(void){core=dlopen("libgpsp_libretro_android.so",RTLD_NOW|RTLD_GLOBAL);if(!core){seterr(dlerror());return -1;}
 #define R(x,n) do{*(void**)&x=getsym(n);if(!x)return -2;}while(0)
 R(set_environment,"retro_set_environment");R(set_video,"retro_set_video_refresh");R(set_audio_batch,"retro_set_audio_sample_batch");R(set_input_poll,"retro_set_input_poll");R(set_input_state,"retro_set_input_state");R(api_version,"retro_api_version");R(retro_init_fn,"retro_init");R(retro_deinit_fn,"retro_deinit");R(load_game_fn,"retro_load_game");R(unload_game_fn,"retro_unload_game");R(run_fn,"retro_run");
@@ -655,6 +716,7 @@ JNIEXPORT jboolean JNICALL Java_com_example_gpsp_NativeBridge_achievementsInit(
         RCLOG("rc_client_create failed");
         return JNI_FALSE;
     }
+    rc_client_set_verbose_level(g_rc_client, 4);
     rc_client_set_event_handler(g_rc_client, rc_event_handler);
     rc_client_set_hardcore_enabled(g_rc_client, 0);  /* softcore */
     RCLOG("rc_client initialized");
