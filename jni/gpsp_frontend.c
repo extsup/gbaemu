@@ -122,6 +122,9 @@ static void cache_java_bindings(JNIEnv* env) {
 }
 
 /* Callback 1: baca RAM GBA (EWRAM + IWRAM via SET_MEMORY_MAPS) */
+/* libretro.h versi slim tidak punya constant ini */
+#define RETRO_ENVIRONMENT_SET_MEMORY_MAPS (36 | 0x80000000)
+
 /* ==== Memory descriptor map dari core (SET_MEMORY_MAPS) ==== */
 #define MAX_MEM_REGIONS 8
 typedef struct {
@@ -716,7 +719,6 @@ JNIEXPORT jboolean JNICALL Java_com_example_gpsp_NativeBridge_achievementsInit(
         RCLOG("rc_client_create failed");
         return JNI_FALSE;
     }
-    rc_client_set_verbose_level(g_rc_client, 4);
     rc_client_set_event_handler(g_rc_client, rc_event_handler);
     rc_client_set_hardcore_enabled(g_rc_client, 0);  /* softcore */
     RCLOG("rc_client initialized");
