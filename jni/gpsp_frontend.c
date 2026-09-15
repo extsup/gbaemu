@@ -179,6 +179,46 @@ static uint32_t rc_read_memory(uint32_t address, uint8_t* buffer,
         }
     }
 
+    /* RA GBA offset convention:
+     *   0x00000 - 0x3FFFF : EWRAM offset (256KB)
+     *   0x40000 - 0x47FFF : IWRAM offset (32KB)
+     */
+    if (address < 0x40000) {
+        for (int i = 0; i < g_mem_region_count; i++) {
+            if (g_mem_regions[i].start == 0x02000000) {
+                if ((size_t)address + num_bytes <= g_mem_regions[i].len) {
+                    memcpy(buffer,
+                           g_mem_regions[i].ptr + g_mem_regions[i].offset
+                           + address, num_bytes);
+                    return num_bytes;
+                }
+            }
+        }
+        /* Fallback ke retro_get_memory_data */
+        if (get_mem_data_fn && get_mem_size_fn) {
+            size_t sz = get_mem_size_fn(RETRO_MEMORY_SYSTEM_RAM);
+            void* ram = get_mem_data_fn(RETRO_MEMORY_SYSTEM_RAM);
+            if (ram && (size_t)address + num_bytes <= sz) {
+                memcpy(buffer, (uint8_t*)ram + address, num_bytes);
+                return num_bytes;
+            }
+        }
+    }
+
+    if (address >= 0x40000 && address < 0x48000) {
+        size_t iwram_off = address - 0x40000;
+        for (int i = 0; i < g_mem_region_count; i++) {
+            if (g_mem_regions[i].start == 0x03000000) {
+                if (iwram_off + num_bytes <= g_mem_regions[i].len) {
+                    memcpy(buffer,
+                           g_mem_regions[i].ptr + g_mem_regions[i].offset
+                           + iwram_off, num_bytes);
+                    return num_bytes;
+                }
+            }
+        }
+    }
+
     memset(buffer, 0, num_bytes);
     return 0;
 }
