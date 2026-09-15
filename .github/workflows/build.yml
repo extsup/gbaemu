@@ -13,17 +13,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v4
-
-      - name: Install NDK r21e
-        run: |
-          sdkmanager "ndk;21.4.7075529"
+      - name: Setup NDK r21e
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r21e
 
       - name: Build JNI
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
-          export NDK=$ANDROID_SDK_ROOT/ndk/21.4.7075529
-          $NDK/ndk-build \
+          echo "NDK at: $ANDROID_NDK_HOME"
+          chmod +x "$ANDROID_NDK_HOME/ndk-build"
+          "$ANDROID_NDK_HOME/ndk-build" \
             NDK_PROJECT_PATH=. \
             APP_BUILD_SCRIPT=jni/Android.mk \
             NDK_APPLICATION_MK=jni/Application.mk
@@ -41,4 +43,3 @@ jobs:
           name: gpsp-jni-so
           path: |
             libs/**/*.so
-            obj/local/**/*.so
