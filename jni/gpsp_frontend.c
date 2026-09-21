@@ -141,20 +141,25 @@ static uint32_t rc_read_memory(uint32_t address, uint8_t* buffer,
                                 uint32_t num_bytes, rc_client_t* client) {
     (void)client;
 
-    /* VALUE_LOG: catat nilai yang dibaca di area awal EWRAM */
-    if (address < 0x8000 && g_mem_region_count > 0) {
-        static uint32_t last_log_frame[32] = {0};
-        static int value_log_count = 0;
-        if (value_log_count < 200) {
-            for (int i = 0; i < g_mem_region_count; i++) {
-                if (g_mem_regions[i].start == 0x02000000 &&
-                    (size_t)address + num_bytes <= g_mem_regions[i].len) {
+    /* VALUE_LOG2: log semua address EWRAM unik yang dibaca rcheevos */
+    if (address < 0x40000 && g_mem_region_count > 0) {
+        static uint32_t logged_addr[400];
+        static int log_count = 0;
+        int already = 0;
+        for (int j = 0; j < log_count; j++) {
+            if (logged_addr[j] == address) { already = 1; break; }
+        }
+        if (!already && log_count < 400) {
+            logged_addr[log_count++] = address;
+            for (int k = 0; k < g_mem_region_count; k++) {
+                if (g_mem_regions[k].start == 0x02000000 &&
+                    (size_t)address + num_bytes <= g_mem_regions[k].len) {
                     uint32_t v = 0;
-                    memcpy(&v, g_mem_regions[i].ptr + g_mem_regions[i].offset + address,
+                    memcpy(&v,
+                           g_mem_regions[k].ptr + g_mem_regions[k].offset + address,
                            num_bytes < 4 ? num_bytes : 4);
-                    RCLOG("VALUE_LOG addr=0x%05X size=%u val=0x%X",
+                    RCLOG("VALUE_LOG2 addr=0x%05X size=%u val=0x%X",
                           address, num_bytes, v);
-                    value_log_count++;
                     break;
                 }
             }
